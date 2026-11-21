@@ -22,14 +22,14 @@ export function Dashboard() {
       </div>
       <dl className="my-5 grid grid-cols-3 gap-2 sm:gap-3">
         <div className="stat-chip"><dt>Level</dt><dd>{state.wallet.level}<span> / 3</span></dd></div>
-        <div className="stat-chip"><dt>Coins</dt><dd>{state.wallet.coins}<span> ✦</span></dd></div>
+        <div className="stat-chip"><dt>Acorns</dt><dd>{state.wallet.coins}<span> ✦</span></dd></div>
         <div className="stat-chip"><dt>Experience</dt><dd>{state.wallet.xp}<span> XP</span></dd></div>
       </dl>
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><p className="eyebrow">YOUR GOAL</p><h2 className="text-xl font-bold text-slate-900">{state.goal.title}</h2></div><strong className="text-xl text-violet-700">{state.goal.progressPercent.toFixed(0)}%</strong></div>
       <p>Confirmed savings · {cad(state.goal.confirmedSaved)} of {cad(state.goal.targetAmount)}</p>
       <progress className="my-3 w-full accent-violet-600" aria-label="Goal progress" max={100} value={state.goal.progressPercent} />
       <p className="text-sm">Potential savings · {cad(state.goal.potentialSavings)} <span className="text-slate-500">(separate from money you’ve moved)</span></p>
-      <div className="mt-5 flex flex-wrap gap-3"><Link className="button" to="/tap?petId=mochi-01">Feed {state.pet.name} · 20 coins</Link><Link className="secondary-button" to="/future-me">View your Future Me</Link></div>
+      <div className="mt-5 flex flex-wrap gap-3"><Link className="button" to="/tap?petId=mochi-01">Feed {state.pet.name} · 20 acorns</Link><Link className="secondary-button" to="/future-me">View your Future Me</Link></div>
     </PageShell>
     <PageShell title="A mindful purchase">
       <form className="space-y-4" onSubmit={async (event) => {
@@ -72,8 +72,8 @@ export function Dashboard() {
     </PageShell>
     <PageShell title={state.unlockedFeatures.includes('dailyQuest') ? 'Your daily quest' : 'Next unlock: daily quests'}>
       {state.unlockedFeatures.includes('dailyQuest') ? <>
-        <p>Streak: {state.quest.streakDays} days. {state.quest.completedToday ? 'Today’s check-in is complete.' : 'One small habit, once a day: +10 coins and +20 XP.'}</p>
-        <button className="mt-3" disabled={busy || !state.quest.available} onClick={() => void mutate('quest:daily-check-in', (requestId) => api.completeQuest({ requestId, questId: 'daily-check-in' }))}>Complete daily check-in</button>
+        <p>Streak: {state.quest.streakDays} days. {state.quest.completedToday ? 'Today’s check-in is complete.' : 'One small habit, once a day: +10 acorns and +20 XP.'}</p>
+        <button className="mt-3" disabled={busy || !state.quest.available} onClick={() => void mutate('quest:daily-check-in', (requestId) => api.checkIn({ requestId }).then(({ state }) => state))}>Complete daily check-in</button>
       </> : <p>Daily quests and streaks unlock at 100 XP.</p>}
     </PageShell>
     <ProgressionMap state={state} />

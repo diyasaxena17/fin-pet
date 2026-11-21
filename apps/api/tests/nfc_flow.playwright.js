@@ -32,7 +32,7 @@ async (page, hooks = {}) => {
   try {
     const nfcUrl = web + '/tap?petId=mochi-01';
     await page.goto(nfcUrl);
-    const confirm = () => page.getByRole('button', {name:'Confirm feed · 20 coins',exact:true});
+    const confirm = () => page.getByRole('button', {name:'Confirm feed · 20 acorns',exact:true});
     await confirm().waitFor({state:'visible'});
     await page.reload();
     await confirm().waitFor({state:'visible'});

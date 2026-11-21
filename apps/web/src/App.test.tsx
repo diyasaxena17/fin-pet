@@ -53,7 +53,7 @@ describe('standalone application journeys', () => {
     mount('/tap?petId=mochi-01');
     await screen.findByRole('heading', { name: 'A little care for Mochi' });
     expect(feed).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Confirm feed · 20 coins' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm feed · 20 acorns' }));
     await screen.findByText('Mochi enjoyed their meal!');
     expect(feed).toHaveBeenCalledTimes(1);
     expect(await api.getState()).toMatchObject({ wallet: { coins: 40 }, pet: { hunger: 80, mood: 'happy' } });
