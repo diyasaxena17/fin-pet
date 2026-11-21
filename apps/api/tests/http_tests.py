@@ -396,6 +396,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('POST', '/api/transactions', transaction)['transaction'], results[0]['transaction'])
         self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
 
+    def test_insight_gets_leave_persisted_payload_and_request_ids_unchanged(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        before = self.storage_snapshot()
+        for _ in range(3):
+            self.assertEqual(api('GET', '/api/insights'), {'insights': []})
+        api('GET', '/api/insights?unexpected=1', status=400)
+        self.assertEqual(self.storage_snapshot(), before)
+
     def test_insights_and_reflections_are_observed_reward_free_and_persistent(self):
         self.restart(device=True)
         api = self.server.call
@@ -494,7 +503,10 @@ class HttpTests(unittest.TestCase):
             api('POST', '/api/transactions', {'requestId': request_id(), 'name': f'Purchase {i}', 'amount': i + 1,
                 'category': category, 'occurredAt': (base + timedelta(minutes=30*i)).isoformat(timespec='milliseconds')})
         before = api('GET', '/api/state')
+        persisted = self.storage_snapshot()
         insights = api('GET', '/api/insights')['insights']
+        self.assertEqual(api('GET', '/api/insights')['insights'], insights)
+        self.assertEqual(self.storage_snapshot(), persisted)
         self.assertEqual(len(insights), 1)
         self.assertEqual(insights[0]['kind'], 'frequency')
         self.assertEqual(insights[0]['source'], 'manual')

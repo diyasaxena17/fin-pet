@@ -203,6 +203,34 @@ Retry a successful transaction with the same UUID and validated payload to avoid
 another row. Conflicting reuse returns 409. Invalid inputs return 400 without
 changing state or recording the UUID; correcting the input may reuse that ID.
 
+## Spending insights (BE-03)
+
+`GET /api/insights` takes no query parameters and returns `{ "insights": [] }`
+when an initialized account has insufficient evidence. It only reads saved
+transactions; it never changes rewards, request IDs or stored state.
+
+The frozen rules use an inclusive trailing seven-day lookback ending at the
+request's evaluation time, excluding future transactions:
+
+- At least three shopping/entertainment purchases spanning at most four hours
+  produce a clustering card. Planned purchases also count. Timestamps are sorted
+  with transaction IDs breaking ties; contained windows are omitted. Distinct
+  overlapping maximal windows can produce distinct cards.
+- At least three exact-name purchases produce a frequency card, including
+  `Takeout`. Exact-name grouping is case-sensitive and preserves the existing
+  contract behavior for other purchase names too.
+
+Both rules keep manual and demo evidence separate; mixed-source cards are not
+supported. Each card uses `kind:"frequency"`, a deterministic ID, count,
+`totalAmount` in CAD dollars, `windowDays` (7 or 4/24), provenance and an optional
+suggestion expressed with “Consider…”. Totals are summed in integer cents.
+Descriptions report recorded purchases without inferring emotions or diagnoses.
+Frequency IDs retain the first recorded qualifying transaction ID; cluster IDs
+include their first/last sorted transaction IDs. Repeated evaluations of the same
+records at the same time yield identical cards. Cards can change as records enter
+or leave the trailing lookback; elapsed windows use timestamp instants rather than
+calendar days, so DST does not change their duration.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the

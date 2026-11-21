@@ -206,11 +206,73 @@ void insight_windows() {
   check(spending_insights(state, now).empty(), "Older than seven days excluded");
 }
 
+
+void insight_acceptance() {
+  auto state = empty_state();
+  apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  auto& transactions = state["finance"]["transactions"];
+  const auto now = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto purchase = [](const std::string& id, const std::string& at, int cents,
+                           const std::string& name, const std::string& category,
+                           const std::string& source = "manual") {
+    return Json{{"id", id}, {"occurredAt", at}, {"amountCents", cents}, {"name", name},
+      {"category", category}, {"source", source}, {"planned", false}, {"reflection", nullptr}};
+  };
+  check(spending_insights(state, now).empty(), "Empty records produce no insight");
+  transactions.push_back(purchase("b", "2026-11-21T08:00:00Z", 2, "Book", "shopping"));
+  transactions.push_back(purchase("a", "2026-11-21T04:00:00-04:00", 1, "Game", "entertainment"));
+  check(spending_insights(state, now).empty(), "Two discretionary purchases do not qualify");
+  transactions.push_back(purchase("c", "2026-11-21T12:00:00Z", 3, "Shoes", "shopping"));
+  const auto cluster = spending_insights(state, now);
+  check(cluster.size() == 1 && cluster[0]["id"] == "cluster-manual-a-c", "Tied timestamps use ID order");
+  check(cluster[0]["evidence"] == Json{{"count", 3}, {"windowDays", 4.0/24.0}, {"totalAmount", .06}}, "Exact four-hour window totals cents");
+  const auto snapshot = state;
+  for (int i = 0; i < 3; ++i) check(spending_insights(state, now) == cluster, "Repeated reads have stable IDs and evidence");
+  check(state == snapshot, "Insight reads do not mutate stored state");
+  for (auto& t : transactions) t["occurredAt"] = "2026-11-21T12:00:00.001Z";
+  check(spending_insights(state, now).empty(), "Future discretionary transactions are excluded");
+  for (auto& t : transactions) t["occurredAt"] = "2026-11-14T11:59:59.999Z";
+  check(spending_insights(state, now).empty(), "Clusters older than the contract lookback are excluded");
+  transactions = snapshot["finance"]["transactions"];
+  transactions.push_back(purchase("d", "2026-11-21T09:00:00Z", 4, "Cinema", "entertainment"));
+  auto cards = spending_insights(state, now);
+  check(cards.size() == 1 && cards[0]["evidence"]["count"] == 4 && cards[0]["evidence"]["totalAmount"] == .10,
+        "Contained windows do not produce duplicate cards");
+  transactions[0]["occurredAt"] = "2026-11-21T07:59:59.999Z";
+  cards = discretionary_clusters(state, now);
+  check(cards.size() == 2 && cards[0]["id"] != cards[1]["id"], "Different overlapping maximal windows have distinct IDs");
+
+  transactions = Json::array();
+  for (int i = 0; i < 2; ++i)
+    transactions.push_back(purchase("takeout-" + std::to_string(i), "2026-11-14T12:00:00Z", 1801, "Takeout", "food"));
+  check(spending_insights(state, now).empty(), "Two takeouts do not qualify");
+  transactions.push_back(purchase("old", "2026-11-14T11:59:59.999Z", 9999, "Takeout", "food"));
+  transactions.push_back(purchase("future", "2026-11-21T12:00:00.001Z", 9999, "Takeout", "food"));
+  transactions.push_back(purchase("demo-only", "2026-11-21T11:00:00Z", 9999, "Takeout", "food", "demo"));
+  check(spending_insights(state, now).empty(), "Old, future and different-source entries cannot complete a group");
+  transactions.push_back(purchase("takeout-2", "2026-11-21T12:00:00Z", 1801, "Takeout", "food"));
+  cards = spending_insights(state, now);
+  check(cards.size() == 1 && cards[0]["id"] == "frequency-manual-takeout-0", "One deterministic takeout card");
+  check(cards[0]["source"] == "manual" && cards[0]["evidence"] == Json{{"count", 3}, {"windowDays", 7}, {"totalAmount", 54.03}},
+        "Inclusive seven-day boundary and exact manual evidence");
+  transactions.push_back(purchase("demo-2", "2026-11-21T10:00:00Z", 1, "Takeout", "food", "demo"));
+  transactions.push_back(purchase("demo-3", "2026-11-21T09:00:00Z", 2, "Takeout", "food", "demo"));
+  cards = spending_insights(state, now);
+  check(cards.size() == 2 && cards[1]["source"] == "demo" && cards[1]["evidence"]["totalAmount"] == 100.02,
+        "Demo frequency uses only demo evidence");
+  const auto final_snapshot = state;
+  check(spending_insights(state, now) == cards && state == final_snapshot, "Frequency reads are repeatable and read-only");
+  for (const auto& card : cards) {
+    check(card.size() == 7 && card["kind"] == "frequency" && !card["suggestion"].get<std::string>().empty(),
+          "Frozen insight shape and constructive suggestion");
+  }
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
