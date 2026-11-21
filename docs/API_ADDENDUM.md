@@ -56,9 +56,10 @@ instant in `DEMO_TIME_ZONE`, not the caller's written date. ID is
 spending totals, never savings, pet fullness or rewards. Legacy buy decisions
 remain independent and do not create transactions or double-count spending.
 
-Reflections become due after 24 elapsed hours, exclude reflected records and
+Reflections become due after 48 elapsed hours, exclude reflected records and
 are read-only on GET. Verdicts are `worth_it|unsure|not_worth_it`. Reflection
-rewards are zero. A repeated identical verdict is a success; a changed verdict
+rewards are zero. Existing reviews saved under the previous 24-hour rule retain
+their verdict and timestamp, even on a new-ID retry before 48 hours. A repeated identical verdict is a success; a changed verdict
 returns `REFLECTION_EXISTS`/409. Earlier submissions return
 `REFLECTION_NOT_DUE`/409. Missing records return `NOT_FOUND`/404.
 
@@ -68,6 +69,17 @@ three occurrences produce a frequency insight with count and total CAD amount.
 Stable ID is `frequency-<source>-<first transaction id>`. Text describes only
 recorded purchases, with no inferred mood, anxiety, stress or impulsivity.
 Empty data returns an empty list, not invented observations.
+
+In addition, frequency-shaped cluster insights count three or more shopping or
+entertainment purchases spanning at most four elapsed hours, within the trailing
+seven days. Both planned and unplanned records count. Other categories are
+excluded. Evidence remains `{count, windowDays, totalAmount}` with
+`windowDays=4/24`; `kind` stays `frequency`. Manual/demo records never mix.
+Sort by instant, then ID; report maximal windows, omit contained windows, and
+keep overlapping windows only when their end purchase differs. IDs are
+`cluster-<source>-<first transaction id>-<last transaction id>`. Return existing
+seven-day frequency insights first, then manual clusters, then demo clusters.
+No rule infers emotional state. GETs remain read-only.
 
 Lessons are an always-available fixed catalogue. A correct answer earns 5
 acorns/10 XP once per lesson; wrong answers give feedback and zero reward and

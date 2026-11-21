@@ -28,6 +28,7 @@ export type FinanceAction =
   | { type: 'transaction'; input: TransactionInput } | { type: 'reflection'; input: ReflectionInput }
   | { type: 'lesson'; input: LessonAnswerInput } | { type: 'checkIn'; input: CheckInInput };
 export type AddendumAction = Action | FinanceAction;
+const REFLECTION_DELAY_MS = 48 * 60 * 60 * 1000;
 const cents = (value: number) => Math.round(value * 100);
 function add(a: number, b: number): number {
   const result = a + b;
@@ -87,8 +88,9 @@ export function applyAddendumAction(stored: StoredState, action: AddendumAction,
       if (!transaction) throw new DomainError(404, 'NOT_FOUND', 'Transaction not found.');
       if (transaction.reflection && transaction.reflection.verdict !== action.input.verdict)
         throw new DomainError(409, 'REFLECTION_EXISTS', 'This transaction has already been reflected on.');
-      if (now.getTime() - Date.parse(transaction.occurredAt) < 86_400_000)
-        throw new DomainError(409, 'REFLECTION_NOT_DUE', 'Reflection opens after 24 hours.');
+      if (transaction.reflection) break;
+      if (now.getTime() - Date.parse(transaction.occurredAt) < REFLECTION_DELAY_MS)
+        throw new DomainError(409, 'REFLECTION_NOT_DUE', 'Reflection opens after 48 hours.');
       transaction.reflection ??= { verdict: action.input.verdict, reflectedAt: now.toISOString() };
       break;
     }
@@ -144,7 +146,7 @@ export function requireAddendumState(state: AddendumAppState): AddendumInitializ
 }
 export function getDueReflections(stored: StoredState, now = new Date()): Transaction[] {
   accountRequired(stored);
-  return stored.finance.transactions.filter((t) => !t.reflection && now.getTime() - Date.parse(t.occurredAt) >= 86_400_000)
+  return stored.finance.transactions.filter((t) => !t.reflection && now.getTime() - Date.parse(t.occurredAt) >= REFLECTION_DELAY_MS)
     .map(({ amountCents, ...t }) => structuredClone({ ...t, amount: amountCents / 100 }));
 }
 export function getInsights(stored: StoredState, now = new Date()): Insight[] {
@@ -156,13 +158,33 @@ export function getInsights(stored: StoredState, now = new Date()): Insight[] {
     const key = JSON.stringify([t.name, t.source]);
     const group = groups.get(key) ?? []; group.push(t); groups.set(key, group);
   }
-  return [...groups.values()].filter((group) => group.length >= 3).map((group) => {
+  const frequency: Insight[] = [...groups.values()].filter((group) => group.length >= 3).map((group) => {
     const first = group[0]!; const count = group.length;
     return { id: `frequency-${first.source}-${first.id}`, kind: 'frequency', title: `${first.name} showed up ${count} times this week`,
       description: `You recorded ${count} ${first.name} purchases in the last seven days.`,
       evidence: { count, windowDays: 7, totalAmount: group.reduce((sum, t) => add(sum, t.amountCents), 0) / 100 }, source: first.source,
       suggestion: 'Consider a small spending challenge that suits you.' };
   });
+  const clusters: Insight[] = [];
+  for (const source of ['manual', 'demo'] as const) {
+    const purchases = stored.finance.transactions.filter((t) => {
+      const elapsed = now.getTime() - Date.parse(t.occurredAt);
+      return t.source === source && ['shopping', 'entertainment'].includes(t.category) && elapsed >= 0 && elapsed <= 7 * 86_400_000;
+    }).sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    let right = 0, previousEnd = 0;
+    for (let left = 0; left < purchases.length; left++) {
+      while (right < purchases.length && Date.parse(purchases[right]!.occurredAt) - Date.parse(purchases[left]!.occurredAt) <= 4 * 60 * 60 * 1000) right++;
+      if (right - left < 3 || right <= previousEnd) continue;
+      previousEnd = right;
+      const group = purchases.slice(left, right);
+      clusters.push({ id: `cluster-${source}-${group[0]!.id}-${group.at(-1)!.id}`, kind: 'frequency',
+        title: `${group.length} purchases within four hours`,
+        description: `You recorded ${group.length} shopping and entertainment purchases within four hours.`,
+        evidence: { count: group.length, windowDays: 4 / 24, totalAmount: group.reduce((sum, t) => add(sum, t.amountCents), 0) / 100 },
+        source, suggestion: 'Consider reviewing this group of purchases.' });
+    }
+  }
+  return [...frequency, ...clusters];
 }
 export function getLessons(stored: StoredState): LessonSummary[] {
   accountRequired(stored);

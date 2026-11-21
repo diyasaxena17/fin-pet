@@ -50,12 +50,12 @@ describe('additive finance rules', () => {
     expect(() => applyAddendumAction(stored, { type: 'transaction', input: future }, now)).toThrow('future');
     expect(stored.processedRequestIds).not.toContain(future.requestId);
   });
-  it('reflects only after 24 hours and never rewards a verdict', () => {
+  it('reflects only after 48 hours and never rewards a verdict', () => {
     let stored = record(onboard(), now.toISOString());
     const input = { requestId: randomUUID(), transactionId: stored.finance.transactions[0]!.id, verdict: 'unsure' as const };
     expect(getDueReflections(stored, now)).toEqual([]);
-    expect(() => applyAddendumAction(stored, { type: 'reflection', input }, now)).toThrow('24 hours');
-    const tomorrow = new Date(now.getTime() + 86_400_000);
+    expect(() => applyAddendumAction(stored, { type: 'reflection', input }, now)).toThrow('48 hours');
+    const tomorrow = new Date(now.getTime() + 2 * 86_400_000);
     expect(getDueReflections(stored, tomorrow)).toHaveLength(1);
     stored = applyAddendumAction(stored, { type: 'reflection', input }, tomorrow);
     expect(getDueReflections(stored, tomorrow)).toEqual([]);
@@ -99,4 +99,43 @@ describe('additive finance rules', () => {
     stored = applyAddendumAction(stored, { type: 'checkIn', input: { requestId: randomUUID() } }, afterMidnight);
     expect(stored.account).toMatchObject({ coins: 20, xp: 140, streakDays: 2 });
   });
+});
+
+it('preserves reviews saved under the old delay and enforces the exact new boundary', () => {
+  let stored = record(onboard(), now.toISOString());
+  const input = { requestId: randomUUID(), transactionId: stored.finance.transactions[0]!.id, verdict: 'unsure' as const };
+  const boundary = new Date(now.getTime() + 2 * 86_400_000);
+  expect(getDueReflections(stored, new Date(+boundary - 1))).toEqual([]);
+  expect(() => applyAddendumAction(stored, { type: 'reflection', input }, new Date(+boundary - 1))).toThrow('48 hours');
+  expect(getDueReflections(stored, boundary)).toHaveLength(1);
+  stored.finance.transactions[0]!.reflection = { verdict: 'unsure', reflectedAt: now.toISOString() };
+  const saved = structuredClone(stored.finance.transactions[0]!.reflection);
+  stored = applyAddendumAction(stored, { type: 'reflection', input }, now);
+  expect(stored.finance.transactions[0]!.reflection).toEqual(saved);
+  expect(applyAddendumAction(stored, { type: 'reflection', input }, boundary)).toEqual(stored);
+});
+
+it('clusters at the four-hour boundary, separates sources and preserves deterministic evidence', () => {
+  const stored = onboard();
+  const rows = [0, 1, 2].map((i) => ({ id: `item-${i}`, name: `Purchase ${i}`, amountCents: (i + 1) * 100,
+    category: 'shopping' as const, occurredAt: new Date(+now - [4, 3, 0][i]! * 3600000).toISOString(),
+    planned: true, source: 'manual' as const, reflection: null }));
+  stored.finance.transactions = structuredClone(rows);
+  const before = structuredClone(stored);
+  const expected = getInsights(stored, now);
+  expect(expected).toHaveLength(1);
+  expect(expected[0]).toMatchObject({ source: 'manual', evidence: { count: 3, windowDays: 4 / 24, totalAmount: 6 } });
+  expect(stored).toEqual(before);
+  stored.finance.transactions.reverse();
+  expect(getInsights(stored, now)).toEqual(expected);
+  stored.finance.transactions = structuredClone(rows);
+  stored.finance.transactions[0]!.occurredAt = new Date(+now - 4 * 3600000 - 1).toISOString();
+  expect(getInsights(stored, now)).toEqual([]);
+  stored.finance.transactions = structuredClone(rows);
+  stored.finance.transactions[0]!.source = 'demo';
+  expect(getInsights(stored, now)).toEqual([]);
+  stored.finance.transactions = [...structuredClone(rows), ...rows.map((t) => ({ ...t, id: `demo-${t.id}`, source: 'demo' as const }))];
+  expect(getInsights(stored, now).map((i) => i.source)).toEqual(['manual', 'demo']);
+  stored.finance.transactions.forEach((t) => { t.category = 'bills'; });
+  expect(getInsights(stored, now)).toEqual([]);
 });
