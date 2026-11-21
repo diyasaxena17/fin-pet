@@ -306,6 +306,31 @@ returns 404 `NOT_INITIALIZED`. Conflicting reuse of a successful UUID returns 40
 `REQUEST_ID_CONFLICT`. Failed requests consume no ID; storage failures roll back
 completion, reward, reactions and request history together.
 
+## Read-only daily report (BE-06)
+
+`GET /api/reports/today` requires onboarding, accepts no query parameters and
+returns exactly the frozen DailyReport fields: `date`, `spentToday`, `dailyLimit`,
+`underDailyLimit`, `achievement`, `insight`, `completedToday`, `streakDays`,
+`availableReward`.
+
+Spending is summed from stored integer-cent transactions on the current calendar
+date in `DEMO_TIME_ZONE` (default `America/Toronto`). The current month's budget
+supplies the daily target. Midnight switches both day and month as needed; DST
+uses calendar days, not fixed 24-hour windows. No records means zero spent.
+
+For $18 spent against a $25 limit, `underDailyLimit` is true; exactly $25 is also
+within target. Without a configured daily target, both `dailyLimit` and
+`underDailyLimit` are null and no budget achievement is claimed. Above-target
+spending also has no achievement. The insight text describes check-in status,
+without claiming a savings transfer.
+
+Completion, streak and reward availability come from the same authoritative
+quest/check-in projection used by `/api/state`. `availableReward` advertises a
+possible explicit check-in reward; GET never grants it, completes a quest,
+records a UUID or emits a hardware reaction. Repeated reads leave persisted
+payload and request history unchanged. Uninitialized accounts return 404
+`NOT_INITIALIZED`; query parameters return 400 `INVALID_REQUEST`.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the

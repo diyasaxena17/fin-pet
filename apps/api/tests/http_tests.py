@@ -734,6 +734,7 @@ class HttpTests(unittest.TestCase):
             'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})
         before = api('GET', '/api/state')
         device = api('GET', '/api/device/state')
+        persisted = self.storage_snapshot()
         for _ in range(3):
             report = api('GET', '/api/reports/today')
             self.assertTrue(report['underDailyLimit'])
@@ -742,6 +743,9 @@ class HttpTests(unittest.TestCase):
             self.assertFalse(report['completedToday'])
         self.assertEqual(api('GET', '/api/state'), before)
         self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(self.storage_snapshot(), persisted)
+        api('GET', '/api/reports/today?extra=1', status=400)
+        self.assertEqual(self.storage_snapshot(), persisted)
         with sqlite3.connect(self.db) as db:
             db.execute("CREATE TRIGGER fail_checkin BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
         api('POST', '/api/check-ins', check_in, 500)

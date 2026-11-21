@@ -1,6 +1,7 @@
 #include "database.hpp"
 #include "game_logic.hpp"
 #include "engagement.hpp"
+#include "learning.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -297,11 +298,74 @@ void insight_acceptance() {
   }
 }
 
+
+void daily_report_calendar() {
+  auto state = empty_state();
+  apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  const auto report_at = [&](const char* instant) {
+    const auto seconds = std::chrono::floor<std::chrono::seconds>(
+      std::chrono::milliseconds(timestamp_millis(instant))).count();
+    return daily_report(state, local_day(static_cast<std::time_t>(seconds)));
+  };
+  const auto empty = report_at("2026-12-01T04:59:59.999Z");
+  check(empty == Json{{"date", "2026-11-30"}, {"spentToday", 0}, {"dailyLimit", nullptr},
+    {"underDailyLimit", nullptr}, {"achievement", nullptr}, {"insight", "Your financial check-in is ready"},
+    {"completedToday", false}, {"streakDays", 0}, {"availableReward", {{"coins", 0}, {"xp", 0}}}},
+    "Empty level-one report has frozen shape, unknown target and no earned activity");
+  check(state["account"]["savedCents"] == 0 && state["account"]["lastQuestDate"].is_null(),
+        "Empty report creates neither savings nor check-in");
+  apply_action(state, Action::seed, {{"xp", 100}}, today);
+  for (const auto* month : {"2026-11", "2026-12", "2026-03"})
+    apply_finance_action(state, Action::budget, {{"month", month}, {"monthlyLimit", 500}, {"dailyLimit", 25}}, 0);
+  const auto add_purchase = [&](int n, const char* instant, double amount) {
+    auto input = validate_input(Action::transaction, {{"requestId", id(n)}, {"name", "Meal"},
+      {"amount", amount}, {"category", "food"}, {"occurredAt", instant}});
+    apply_finance_action(state, Action::transaction, input, timestamp_millis("2026-12-02T00:00:00Z"));
+  };
+  add_purchase(201, "2026-12-01T04:59:59.999Z", 18);
+  add_purchase(202, "2026-12-01T05:00:00Z", .29);
+  apply_action(state, Action::check_in, {{"requestId", id(203)}}, "2026-11-30", timestamp_millis("2026-11-30T12:00:00Z") / 1000);
+  const auto snapshot = state;
+  const auto before = report_at("2026-12-01T04:59:59.999Z");
+  check(before["date"] == "2026-11-30" && before["spentToday"] == 18 && before["underDailyLimit"] == true,
+        "18 dollars against 25 uses Toronto day before midnight");
+  check(before["completedToday"] == true && before["availableReward"] == Json{{"coins", 0}, {"xp", 0}},
+        "Report uses completed authoritative check-in");
+  const auto after = report_at("2026-12-01T05:00:00Z");
+  check(after["date"] == "2026-12-01" && after["spentToday"] == .29 && after["dailyLimit"] == 25,
+        "Midnight selects new month's budget and only its local-day spending");
+  check(after["completedToday"] == false && after["streakDays"] == 1 &&
+        after["availableReward"] == Json{{"coins", 10}, {"xp", 20}}, "Next-day reward remains merely available");
+  check(report_at("2026-12-02T05:00:00Z")["streakDays"] == 0, "Missed day projects expired streak");
+  for (int i = 0; i < 3; ++i) check(report_at("2026-12-01T05:00:00Z") == after, "Repeated fixed-time reports are deterministic");
+  check(state == snapshot, "Reports do not change rewards, reaction, streak or saved state");
+  const auto quest = app_state(state, "2026-12-01")["quest"];
+  check(after["completedToday"] == quest["completedToday"] && after["streakDays"] == quest["streakDays"],
+        "Report does not use a duplicate check-in counter");
+  add_purchase(204, "2026-12-01T12:00:00-05:00", 24.71);
+  check(report_at("2026-12-01T18:00:00Z")["underDailyLimit"] == true, "Exact daily limit is within target");
+  add_purchase(205, "2026-12-01T13:00:00-05:00", .01);
+  const auto over = report_at("2026-12-01T19:00:00Z");
+  check(over["spentToday"] == 25.01 && over["underDailyLimit"] == false && over["achievement"].is_null(),
+        "One cent over target produces no false achievement");
+  apply_finance_action(state, Action::budget, {{"month", "2026-12"}, {"monthlyLimit", 500}}, 0);
+  const auto untargeted = report_at("2026-12-01T19:00:00Z");
+  check(untargeted["spentToday"] == 25.01 && untargeted["dailyLimit"].is_null() &&
+        untargeted["underDailyLimit"].is_null() && untargeted["achievement"].is_null(),
+        "Recorded spending without a daily target makes no success/failure claim");
+  // Toronto's spring-forward day is 23 hours; both sides of the jump are March 8.
+  add_purchase(206, "2026-03-08T06:59:59.999Z", 1);
+  add_purchase(207, "2026-03-08T07:00:00Z", 2);
+  add_purchase(208, "2026-03-09T04:00:00Z", 4);
+  check(report_at("2026-03-08T07:00:00Z")["spentToday"] == 3, "DST jump stays in one calendar day");
+  check(report_at("2026-03-09T04:00:00Z")["spentToday"] == 4, "DST midnight excludes previous local day");
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance(); daily_report_calendar();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
