@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSchema, monthQuerySchema, preferencesSchema, transactionSchema, reflectionSchema, treeStageFor, treeStages } from './index';
+import { budgetSchema, monthQuerySchema, preferencesSchema, preferencesInputSchema, transactionSchema, reflectionSchema, treeStageFor, treeStages } from './index';
 const requestId = '11111111-1111-4111-8111-111111111111';
 describe('additive contract', () => {
   it('validates budgets, categories, strict query fields and money', () => {
@@ -23,4 +23,15 @@ describe('additive contract', () => {
     expect(Object.isFrozen(treeStages)).toBe(true);
     expect(() => treeStageFor(NaN)).toThrow();
   });
+});
+
+it('accepts independent name and voice edits without expanding preference state', () => {
+  expect(preferencesInputSchema.parse({ petName: '  Clover  ' })).toEqual({ petName: 'Clover' });
+  expect(preferencesInputSchema.parse({ voice: 'calm' })).toEqual({ voice: 'calm' });
+  expect(preferencesInputSchema.parse({ petName: 'Maple', voice: 'cute' })).toEqual({ petName: 'Maple', voice: 'cute' });
+  expect(preferencesInputSchema.parse({ petName: '🐿'.repeat(100) }).petName).toHaveLength(200);
+  for (const value of [{}, { petName: '  ' }, { petName: 'x'.repeat(201) }, { petName: '🐿'.repeat(101) },
+    { petName: null }, { voice: 'loud' }, { voice: 'cute', unknown: true }])
+    expect(preferencesInputSchema.safeParse(value).success).toBe(false);
+  expect(preferencesSchema.safeParse({ voice: 'cute', petName: 'Maple' }).success).toBe(false);
 });

@@ -6,7 +6,11 @@ import { moneySchema } from './money';
 export const voiceSchema = z.enum(['cute', 'calm']);
 export const preferencesSchema = z.strictObject({ voice: voiceSchema });
 export type Preferences = z.infer<typeof preferencesSchema>;
-export type PreferencesInput = Preferences;
+export const preferencesInputSchema = z.strictObject({
+  voice: voiceSchema.optional(),
+  petName: z.string().trim().min(1, 'Give your squirrel a name.').max(200, 'Use 200 characters or fewer.').refine((value) => value.length <= 200, 'Use 200 characters or fewer.').optional(),
+}).refine((value) => value.voice !== undefined || value.petName !== undefined, 'Choose a name or voice to update.');
+export type PreferencesInput = z.infer<typeof preferencesInputSchema>;
 export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 export const monthQuerySchema = z.strictObject({ month: monthSchema });
 export const categorySchema = z.enum(['food', 'shopping', 'transport', 'entertainment', 'bills', 'other']);

@@ -139,3 +139,18 @@ it('clusters at the four-hour boundary, separates sources and preserves determin
   stored.finance.transactions.forEach((t) => { t.category = 'bills'; });
   expect(getInsights(stored, now)).toEqual([]);
 });
+
+it('updates name and voice independently without moving game progress or duplicating names', () => {
+  const original = onboard();
+  const renamed = applyAddendumAction(original, { type: 'preferences', input: { petName: 'Clover' } }, now);
+  expect(renamed.account!.petName).toBe('Clover');
+  expect(renamed.finance.preferences).toEqual({ voice: 'cute' });
+  const calm = applyAddendumAction(renamed, { type: 'preferences', input: { voice: 'calm' } }, now);
+  expect(calm.account!.petName).toBe('Clover');
+  expect(calm.finance.preferences).toEqual({ voice: 'calm' });
+  expect(applyAddendumAction(calm, { type: 'preferences', input: { voice: 'calm' } }, now)).toEqual(calm);
+  const state = getAddendumAppState(calm, now);
+  expect(state).toMatchObject({ pet: { name: 'Clover', id: 'mochi-01' }, preferences: { voice: 'calm' } });
+  const restored = applyAddendumAction(calm, { type: 'preferences', input: { petName: 'Mochi', voice: 'cute' } }, now);
+  expect(restored).toEqual(original);
+});
