@@ -47,7 +47,8 @@ pnpm 10.34.9 are used only for the existing workspace/frontend checks and the
 TypeScript reference test. Existing JS dependency declarations are retained to
 keep the root lockfile unchanged; they are not backend runtime dependencies.
 After workspace dependencies are installed, `pnpm check` runs the native tests
-and 115 differential transitions against the frozen TypeScript schemas/domain.
+and 115 V1 differential transitions and 50 addendum requests against the actual
+frontend mock, using the shared TypeScript schemas/domain.
 Standalone CTest has no Node dependency. `-DBUILD_TESTING=OFF` builds without Python.
 
 ## Configuration
@@ -70,7 +71,17 @@ an explicit `DB_PATH` when moving the executable elsewhere.
 
 ## Frozen API
 
-All successful routes return HTTP 200, mutations return AppState directly, and
+The [shared addendum](../../docs/API_ADDENDUM.md) specifies the twelve additive
+routes now implemented: preferences, budgets, manual transactions, observed
+insights, reflections, lessons, daily reports and check-ins. Its response wrappers
+are intentional; V1 response shapes remain direct states. All initialized states
+now include preferences, current-month budgetSummary, forest and today.
+The primary NFC/QR URL is `/check-in`: opening the daily report is read-only;
+only explicit confirmation calls `/api/check-ins`. `/tap?petId=mochi-01` retains
+legacy feeding. Both check-in routes share the level-2 gate and one daily reward.
+
+
+All successful routes return HTTP 200, V1 mutations return AppState directly, and
 responses carry `Cache-Control: no-store`. Before onboarding, `/api/state`
 returns only `{"initialized":false}`. Other account actions return 404 until
 onboarded. Repeated onboarding returns 409.
@@ -161,6 +172,14 @@ global UUID semantics; a successful ID is not a way to submit another operation.
 Failed actions consume no ID. Buy decisions and fresh-ID same-day quest no-ops
 are successful requests and do consume their UUIDs.
 
+SQLite `user_version=2` adds finance defaults in a transaction when opening an
+existing v1 database. It retains every original account value and letter byte,
+request and decision row, and private reaction/cooldown field. New databases use
+the same schema. Budget and transaction amounts remain cents; forest and daily
+reports are projections. Successful IDs still commit with mutations. Structured
+new endpoints reject conflicting ID/payload reuse; legacy-to-legacy replay keeps
+V1 current-state behavior. The original payload's `version:1` remains intact.
+
 Corrupt JSON, missing state rows, and incompatible database versions fail startup
 instead of resetting progress. There is no automatic migration from the retired
 Node JSON `DATA_FILE`; use a fresh SQLite path for the C++ demo. Runtime SQLite
@@ -168,9 +187,9 @@ files (including WAL/SHM sidecars) and build output are ignored by Git.
 
 ## Optional Linux/Python Raspberry Pi extension
 
-The active frozen contract explicitly removed device endpoints and `AppState.device`.
-To resolve the attached prompt's conflict without changing shared contracts,
-`ENABLE_DEVICE_API=false` preserves those 404s. Explicitly enabling it adds only:
+The addendum preserves the existing opt-in device extension without adding
+`AppState.device`. `ENABLE_DEVICE_API=false` keeps these routes disabled.
+Explicitly enabling it adds only:
 
 - `GET /api/device/state`: exactly `petId`, `mood`, `hunger`, `reactionSeq`,
   `reactionType`; never names, purchases, goals, or letter text. Before onboarding,
@@ -219,15 +238,22 @@ during the hardware demo. GETs do not consume events. Replacing the database
 rebaselines a decreased sequence rather than replaying its old state.
 
 Phone app: `http://<LAPTOP_LAN_IP>:5173/`.
-NFC tag / QR contents: `http://<LAPTOP_LAN_IP>:5173/tap?petId=mochi-01`.
+Primary NFC tag / QR: `http://<LAPTOP_LAN_IP>:5173/check-in`.
+Optional legacy feed link: `http://<LAPTOP_LAN_IP>:5173/tap?petId=mochi-01`.
 Pi polling: `http://<LAPTOP_LAN_IP>:3000/api/device/state`.
 Phone health check: `http://<LAPTOP_LAN_IP>:3000/health`.
 
 Find the laptop's Wi-Fi IP with `ipconfig getifaddr en0` on macOS (adjust the
 interface), or `hostname -I` on Linux. Phone/Pi and laptop must share a reachable
-network. NFC is passive: it opens the frontend confirmation; only confirming on
-that page posts `/api/feed`. Scanning, opening, refreshing and cancelling do not
-spend coins. The backend implements no NFC reader or GPIO behavior.
+network. NFC is passive: the primary URL opens the daily report; only the check-in
+button posts `/api/check-ins`. The optional legacy feed link requires its separate
+confirmation before `/api/feed`. Opening or refreshing either page grants no
+reward or spend. Device reactions `daily_checkin` and `goal_milestone` remain
+reserved pending hardware-owner agreement; the existing private device shape
+and poller reactions are unchanged. The backend implements no NFC reader or GPIO behavior.
 
 See [verification/results.md](verification/results.md) for observed results,
 manual checks, contract decisions, and hardware checks still requiring devices.
+
+Addendum verification, including migration/restart and browser screenshots, is
+recorded in [verification/addendum-results.md](verification/addendum-results.md).
