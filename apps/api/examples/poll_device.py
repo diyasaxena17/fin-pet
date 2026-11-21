@@ -3,6 +3,7 @@
 import argparse
 from contextlib import contextmanager
 import fcntl
+import http.client
 import importlib
 import importlib.util
 import json
@@ -116,7 +117,7 @@ def run_poller(endpoint, consumer, stop, interval=1, timeout=3, max_retry=8, fet
         try:
             state = fetch(endpoint, timeout)
             consumed = consumer.consume(state)
-        except (OSError, ValueError, TypeError) as error:
+        except (OSError, ValueError, TypeError, http.client.HTTPException) as error:
             log(f'Waiting for Mochi: {error}; reconnecting in {retry:g}s')
             disconnected = True
             if stop.wait(retry):

@@ -8,7 +8,8 @@
     "build": "cmake -S . -B build && cmake --build build",
     "start": "./build/mochi-api",
     "test": "cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure && tsx tests/contract_parity.ts",
-    "typecheck": "cmake -S . -B build && cmake --build build"
+    "typecheck": "cmake -S . -B build && cmake --build build",
+    "test:hardware": "node tests/nfc_browser.mjs"
   },
   "dependencies": {
     "@mochi/contracts": "workspace:*",

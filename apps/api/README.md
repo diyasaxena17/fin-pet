@@ -3,6 +3,9 @@
 A native C++20 backend using cpp-httplib, nlohmann/json, and SQLite3. The existing
 React app consumes the frozen standalone JSON contract without frontend changes.
 
+For the complete phone/NFC/Pi rehearsal, use [HARDWARE_DEMO.md](HARDWARE_DEMO.md):
+startup, LAN/firewall checks, controller hookup, live steps, and troubleshooting.
+
 ## Build, test, run
 
 Requires CMake 3.20+, a C++20 compiler with calendar support (Apple Clang 21 tested;

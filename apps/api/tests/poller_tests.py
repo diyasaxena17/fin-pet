@@ -1,5 +1,6 @@
 """Deterministic controller/cursor/retry tests; no physical GPIO needed."""
 import importlib.util
+import http.client
 from pathlib import Path
 import tempfile
 import unittest
@@ -65,7 +66,7 @@ class PollerTests(unittest.TestCase):
     def test_reconnect_keeps_cursor_and_resets_capped_backoff(self):
         controller = Mock()
         consumer = poller.ReactionConsumer(controller, report=Mock())
-        snapshots = iter([state(3), OSError('offline'), OSError('offline'), OSError('offline'),
+        snapshots = iter([state(3), OSError('offline'), http.client.IncompleteRead(b'partial'), OSError('offline'),
                           state(4), state(4), OSError('offline')])
         delays = []
 
@@ -79,7 +80,7 @@ class PollerTests(unittest.TestCase):
 
         def fetch(*_):
             result = next(snapshots)
-            if isinstance(result, OSError):
+            if isinstance(result, Exception):
                 raise result
             return result
 

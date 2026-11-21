@@ -77,3 +77,11 @@ The example Python poller is a software handoff point for the hardware owner;
 servo/speaker/camera/NFC-reader implementation remains outside this backend.
 No PR was opened or merged. These notes follow the repository PR template for
 review/handoff; checkboxes describe observed results only.
+
+## Subsequent hardware integration work
+
+See [hardware-results.md](hardware-results.md) for the demo launcher, hardened
+controller adapter, reconnect/boot-baseline tests, and automated NFC navigation
+test added after this initial backend verification. The existing C++ backend,
+transaction rules, frontend, and shared API contract were not rewritten.
+The physical controller and Pi access were explicitly deferred by the user.
