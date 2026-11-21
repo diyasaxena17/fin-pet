@@ -222,8 +222,13 @@ Json app_state(const Json& state, const std::string& day) {
 void emit_reaction(Json& state, const std::string& type) {
   add(state["reactionSeq"], 1); state["reactionType"] = type;
 }
-void apply_action(Json& state, Action action, const Json& input, const std::string& day) {
-  (void)day;
+Json device_state(const Json& state) {
+  const auto& account = state.at("account");
+  if (account.is_null()) throw ApiError(404, "NOT_INITIALIZED", "Set up Mochi before using this action.");
+  return {{"petId", "mochi-01"}, {"mood", account.at("mood")}, {"hunger", account.at("hunger")},
+    {"reactionSeq", state.at("reactionSeq")}, {"reactionType", state.at("reactionType")}};
+}
+void apply_action(Json& state, Action action, const Json& input, const std::string& day, std::time_t now) {
   if (action == Action::reset) {
     // Retain the hardware sequence across account resets to avoid stale baselines.
     const auto seq = state.at("reactionSeq"); state = empty_state(); state["reactionSeq"] = seq; return;
@@ -248,7 +253,32 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
       }
       break;
     case Action::savings: add(a["savedCents"], money_cents(input.at("amount"))); add(a["xp"], 30); break;
-    default: throw std::runtime_error("Action is not implemented yet");
+    case Action::feed:
+      if (a.at("coins").get<std::int64_t>() < 20)
+        throw ApiError(409, "INSUFFICIENT_COINS", "You need 20 Mochi coins to feed your pet.");
+      a["coins"] = a.at("coins").get<std::int64_t>() - 20;
+      a["hunger"] = std::min(100, a.at("hunger").get<int>() + 30);
+      a["mood"] = "happy"; emit_reaction(state, "feed"); break;
+    case Action::quest:
+      if (before_level < 2) throw ApiError(409, "QUEST_UNAVAILABLE", "Daily check-ins unlock at level 2.");
+      if (a.at("lastQuestDate") != day) {
+        if (a.at("lastQuestDate") == previous_day(day)) add(a["streakDays"], 1);
+        else a["streakDays"] = 1;
+        a["lastQuestDate"] = day; add(a["coins"], 10); add(a["xp"], 20);
+      }
+      break;
+    case Action::seed:
+      if (input.contains("xp")) a["xp"] = input.at("xp");
+      if (input.contains("coins")) a["coins"] = input.at("coins");
+      if (input.contains("confirmedSaved")) a["savedCents"] = money_cents(input.at("confirmedSaved"), true);
+      a["demoSeeded"] = true;
+      return; // Demo seeding does not create earned activity/reactions.
+    case Action::gesture:
+      if (now >= state.at("lastGestureAt").get<std::int64_t>() + 3) {
+        state["lastGestureAt"] = now; emit_reaction(state, "greeting");
+      }
+      return;
+    case Action::onboard: case Action::reset: break;
   }
   if (level_for(a.at("xp").get<std::int64_t>()) > before_level) emit_reaction(state, "level_up");
 }

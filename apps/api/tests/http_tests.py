@@ -142,6 +142,110 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(state['wallet']['xp'], 300)
         self.assertEqual(state['wallet']['level'], 3)
 
+    def test_feeding_hardware_and_restart(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/device/state', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        before = api('GET', '/api/state')
+        failure = api('POST', '/api/feed', feed, 409)
+        self.assertEqual(failure['error']['code'], 'INSUFFICIENT_COINS')
+        self.assertEqual(api('GET', '/api/state'), before)
+        decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
+        savings = {'requestId': request_id(), 'amount': 50}
+        api('POST', '/api/decisions', decision)
+        api('POST', '/api/savings', savings)
+        baseline = api('GET', '/api/device/state')
+        self.assertEqual(baseline['reactionSeq'], 0)
+        # Opening/refreshing a tap screen can only GET state; it never spends.
+        for _ in range(3):
+            api('GET', '/api/state')
+            self.assertEqual(api('GET', '/api/device/state'), baseline)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(lambda _: api('POST', '/api/feed', feed), range(5)))
+        state = results[0]
+        self.assertEqual(state['wallet']['coins'], 40)
+        self.assertEqual(state['wallet']['xp'], 50)
+        self.assertEqual(state['pet']['hunger'], 80)
+        device = api('GET', '/api/device/state')
+        self.assertEqual(device, {'petId': 'mochi-01', 'hunger': 80, 'mood': 'happy', 'reactionSeq': 1, 'reactionType': 'feed'})
+        self.assertEqual(set(state['pet']), {'id', 'name', 'hunger', 'mood'})
+        self.restart(device=True)
+        api = self.server.call
+        for path, payload in [('/api/feed', feed), ('/api/decisions', decision), ('/api/savings', savings)]:
+            self.assertEqual(api('POST', path, payload), state)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        api('POST', '/api/device/gesture', {'gesture': 'open_palm'})
+        greeting = api('GET', '/api/device/state')
+        self.assertEqual(greeting['reactionSeq'], 2)
+        self.assertEqual(greeting['reactionType'], 'greeting')
+        self.assertEqual(api('POST', '/api/device/gesture', {'gesture': 'open_palm'}), greeting)
+        self.assertEqual(api('GET', '/api/state'), state)
+        api('POST', '/api/device/gesture', {'gesture': 'closed_fist'}, 400)
+
+    def test_quests_demo_reset_and_disabled_routes(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        quest = {'requestId': request_id(), 'questId': 'daily-check-in'}
+        api('POST', '/api/quests/complete', quest, 409)
+        level2 = api('POST', '/api/demo/seed', {'xp': 100})
+        self.assertTrue(level2['demoSeeded'])
+        self.assertIn('dailyQuest', level2['unlockedFeatures'])
+        self.assertTrue(level2['quest']['available'])
+        state = api('POST', '/api/quests/complete', quest)
+        self.assertEqual(state['wallet']['xp'], 120)
+        self.assertEqual(state['wallet']['coins'], 10)
+        self.assertTrue(state['quest']['completedToday'])
+        self.assertFalse(state['quest']['available'])
+        self.assertEqual(api('POST', '/api/quests/complete', {**quest, 'requestId': request_id()}), state)
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('POST', '/api/quests/complete', quest), state)
+        for amount, sections in [(50, 1), (100, 2), (200, 3), (300, 3)]:
+            state = api('POST', '/api/demo/seed', {'xp': 250, 'confirmedSaved': amount})
+            self.assertEqual(state['letter']['revealedSections'], sections)
+            self.assertIn('expandedProjection', state['unlockedFeatures'])
+        api('POST', '/api/demo/seed', {'xp': 300}, 400)
+        self.assertEqual(api('POST', '/api/demo/reset', {}), {'initialized': False})
+        self.restart(demo=False)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), {'initialized': False})
+        for path in ['/api/demo/seed', '/api/demo/reset', '/api/device/gesture']:
+            api('POST', path, {}, 404)
+        api('GET', '/api/device/state', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        # Reset erased the ID history; the previous failed quest ID can earn savings.
+        state = api('POST', '/api/savings', {'requestId': quest['requestId'], 'amount': 1})
+        self.assertEqual(state['wallet']['xp'], 30)
+
+    def test_sqlite_write_failure_rolls_back_and_id_is_reusable(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        before = api('GET', '/api/state')
+        decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_request BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'injected write failure'); END")
+        failed = api('POST', '/api/decisions', decision, 500)
+        self.assertEqual(failed['error']['code'], 'INTERNAL_ERROR')
+        self.assertEqual(api('GET', '/api/state'), before)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM processed_requests').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT count(*) FROM decisions').fetchone()[0], 0)
+            db.execute('DROP TRIGGER fail_request')
+        state = api('POST', '/api/decisions', decision)
+        self.assertEqual(state['wallet']['coins'], 60)
+
+    def test_corrupt_state_fails_startup_without_overwriting(self):
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE app_state SET payload='{corrupt'")
+        result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(self.db)}, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'Mochi startup failed', result.stderr)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], '{corrupt')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

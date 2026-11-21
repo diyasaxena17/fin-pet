@@ -42,14 +42,32 @@ Database::Database(const std::string& path) {
   try {
     sqlite3_busy_timeout(db_, 5000);
     exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
-    exec("CREATE TABLE IF NOT EXISTS app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);"
-         "CREATE TABLE IF NOT EXISTS processed_requests (request_id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, payload TEXT NOT NULL);"
-         "CREATE TABLE IF NOT EXISTS decisions (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);");
-    Statement insert(db_, "INSERT OR IGNORE INTO app_state(id,payload) VALUES(1,?)");
-    insert.text(1, empty_state().dump());
-    insert.done();
+    exec("BEGIN IMMEDIATE");
+    {
+      Statement version(db_, "PRAGMA user_version");
+      if (sqlite3_step(version.stmt) != SQLITE_ROW) throw std::runtime_error("Cannot read database version");
+      const int schema_version = sqlite3_column_int(version.stmt, 0);
+      Statement tables(db_, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+      if (sqlite3_step(tables.stmt) != SQLITE_ROW) throw std::runtime_error("Cannot read database schema");
+      const bool fresh = sqlite3_column_int(tables.stmt, 0) == 0 && schema_version == 0;
+      if (fresh) {
+        exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);"
+             "CREATE TABLE processed_requests (request_id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, payload TEXT NOT NULL);"
+             "CREATE TABLE decisions (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+             "PRAGMA user_version=1;");
+        Statement insert(db_, "INSERT INTO app_state(id,payload) VALUES(1,?)");
+        insert.text(1, empty_state().dump()); insert.done();
+      } else if (schema_version != 1) throw std::runtime_error("Incompatible Mochi database schema");
+    }
     validate_stored_state(load());
-  } catch (...) { sqlite3_close(db_); db_ = nullptr; throw; }
+    // Prepare all tables now, so an incompatible schema fails before listening.
+    Statement ids(db_, "SELECT request_id,endpoint,payload FROM processed_requests LIMIT 0");
+    Statement decisions(db_, "SELECT request_id,payload FROM decisions LIMIT 0");
+    exec("COMMIT");
+  } catch (...) {
+    sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(db_); db_ = nullptr; throw;
+  }
 }
 Database::~Database() { sqlite3_close(db_); }
 Json Database::load() {

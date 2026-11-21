@@ -1,6 +1,7 @@
 #include "database.hpp"
 #include "game_logic.hpp"
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -108,11 +109,50 @@ void concurrency() {
   check(state["wallet"]["level"] == 3 && state["wallet"]["nextLevelXp"].is_null(), "Level 3");
   check(db.read()["reactionSeq"] == 2, "Exactly one reaction per crossed level");
 }
+void feeding_and_quests() {
+  Database db(":memory:"); run(db, Action::onboard, onboarding);
+  const Json feed = {{"requestId", id(1)}, {"petId", "mochi-01"}};
+  const auto before = db.read();
+  error([&] { run(db, Action::feed, feed); }, "INSUFFICIENT_COINS");
+  check(db.read() == before, "Insufficient feed must not mutate");
+  run(db, Action::seed, {{"coins", 40}, {"xp", 100}});
+  check(db.read()["reactionSeq"] == 0, "Seed creates no earned reaction");
+  auto state = run(db, Action::feed, feed);
+  check(state["wallet"]["coins"] == 20 && state["wallet"]["xp"] == 100 && state["pet"]["hunger"] == 80, "Feed");
+  const auto hardware = device_state(db.read());
+  check(hardware.size() == 5 && hardware["reactionSeq"] == 1 && hardware["reactionType"] == "feed", "Private hardware projection");
+  check(run(db, Action::feed, feed) == state && device_state(db.read()) == hardware, "Feed replay");
+  state = run(db, Action::feed, {{"requestId", id(2)}, {"petId", "mochi-01"}});
+  check(state["pet"]["hunger"] == 100 && state["wallet"]["coins"] == 0, "Fullness cap");
+  state = run(db, Action::quest, {{"requestId", id(3)}, {"questId", "daily-check-in"}});
+  check(state["wallet"]["xp"] == 120 && state["wallet"]["coins"] == 10 && state["quest"]["streakDays"] == 1, "Daily reward");
+  check(run(db, Action::quest, {{"requestId", id(4)}, {"questId", "daily-check-in"}}) == state, "Same day fresh ID no reward");
+  state = run(db, Action::quest, {{"requestId", id(5)}, {"questId", "daily-check-in"}}, "2026-11-22");
+  check(state["quest"]["streakDays"] == 2, "Consecutive streak");
+  const auto elapsed = app_state(db.read(), "2026-11-24");
+  check(elapsed["quest"]["streakDays"] == 0 && elapsed["wallet"]["xp"] == 140, "Missed day keeps earned progress");
+  state = run(db, Action::quest, {{"requestId", id(6)}, {"questId", "daily-check-in"}}, "2026-11-24");
+  check(state["quest"]["streakDays"] == 1, "Missed day restarts consecutive streak");
+  check(previous_day("2028-03-01") == "2028-02-29" && previous_day("2027-01-01") == "2026-12-31", "Calendar arithmetic");
+  using namespace std::chrono;
+  const auto utc = sys_days(year(2026)/11/22) + hours(4) + minutes(59);
+  check(local_day(system_clock::to_time_t(utc)) == "2026-11-21", "Toronto before midnight");
+  check(local_day(system_clock::to_time_t(utc + minutes(1))) == "2026-11-22", "Toronto midnight");
+  const auto dst = sys_days(year(2026)/3/8) + hours(7);
+  check(local_day(system_clock::to_time_t(dst)) == "2026-03-08", "DST calendar day");
+  auto stored = db.read();
+  apply_action(stored, Action::gesture, {{"gesture", "open_palm"}}, today, 100);
+  const auto seq = stored["reactionSeq"];
+  apply_action(stored, Action::gesture, {{"gesture", "open_palm"}}, today, 101);
+  check(stored["reactionSeq"] == seq, "Gesture cooldown");
+  apply_action(stored, Action::gesture, {{"gesture", "open_palm"}}, today, 103);
+  check(stored["reactionSeq"] == seq.get<int>() + 1 && stored["reactionType"] == "greeting", "Greeting after cooldown");
+}
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency();
-    std::cout << "Economy, validation, atomicity, concurrency passed\n";
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests();
+    std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
