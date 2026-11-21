@@ -1,6 +1,8 @@
 #include "database.hpp"
 #include "game_logic.hpp"
 #include "engagement.hpp"
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -172,11 +174,43 @@ void reflection_boundary() {
   }
 }
 
+void insight_windows() {
+  auto state = empty_state(); apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  auto& transactions = state["finance"]["transactions"];
+  for (int i = 0; i < 3; ++i) transactions.push_back({{"id", "cluster-" + std::to_string(i)}, {"name", "Purchase " + std::to_string(i)},
+    {"amountCents", (i + 1) * 100}, {"category", i == 1 ? "entertainment" : "shopping"},
+    {"occurredAt", std::array{"2026-11-21T08:00:00Z", "2026-11-21T09:00:00Z", "2026-11-21T12:00:00Z"}[i]},
+    {"planned", true}, {"source", "manual"}, {"reflection", nullptr}});
+  const auto now = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto before = state;
+  const auto clusters = discretionary_clusters(state, now);
+  check(clusters.size() == 1 && clusters[0]["evidence"]["count"] == 3 && clusters[0]["evidence"]["totalAmount"] == 6, "Exact four-hour cluster and cents total");
+  check(clusters[0]["evidence"]["windowDays"] == 4.0 / 24.0 && state == before, "Existing evidence shape and read-only computation");
+  std::reverse(transactions.begin(), transactions.end());
+  check(discretionary_clusters(state, now) == clusters, "Stable result independent of insertion order");
+  transactions = before["finance"]["transactions"];
+  transactions[0]["occurredAt"] = "2026-11-21T07:59:59.999Z";
+  check(discretionary_clusters(state, now).empty(), "Four hours plus one millisecond is not a cluster");
+  transactions = before["finance"]["transactions"];
+  transactions[0]["source"] = "demo";
+  check(discretionary_clusters(state, now).empty(), "Do not mix manual and demo evidence");
+  transactions = before["finance"]["transactions"];
+  for (auto t : before["finance"]["transactions"]) { t["id"] = "demo-" + t["id"].get<std::string>(); t["source"] = "demo"; transactions.push_back(t); }
+  check(discretionary_clusters(state, now).size() == 2, "Separate manual/demo clusters");
+  for (auto& t : transactions) t["category"] = "bills";
+  check(discretionary_clusters(state, now).empty(), "Do not classify bills as discretionary");
+  transactions = before["finance"]["transactions"];
+  for (auto& t : transactions) { t["name"] = "Takeout"; t["category"] = "food"; t["occurredAt"] = "2026-11-14T12:00:00Z"; }
+  check(spending_insights(state, now)[0]["evidence"]["count"] == 3, "Seven-day frequency boundary included");
+  transactions[0]["occurredAt"] = "2026-11-14T11:59:59.999Z";
+  check(spending_insights(state, now).empty(), "Older than seven days excluded");
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

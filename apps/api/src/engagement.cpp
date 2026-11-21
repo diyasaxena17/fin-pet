@@ -1,5 +1,8 @@
 #include "engagement.hpp"
+#include <algorithm>
+#include <array>
 #include <iomanip>
+#include <vector>
 #include <sstream>
 
 namespace mochi {
@@ -41,6 +44,43 @@ Json due_reflections(const Json& state, std::int64_t now_ms) {
     if (t.at("reflection").is_null() && now_ms - timestamp_millis(t.at("occurredAt")) >= reflection_delay_ms) result.push_back(transaction_view(t));
   return result;
 }
+Json discretionary_clusters(const Json& state, std::int64_t now_ms) {
+  require_account(state);
+  constexpr std::int64_t window_ms = 4LL * 60 * 60 * 1000;
+  constexpr std::int64_t lookback_ms = 7LL * 24 * 60 * 60 * 1000;
+  struct Purchase { const Json* transaction; std::int64_t at; };
+  Json result = Json::array();
+  // Keep observed and synthetic evidence separate. These categories are the
+  // conservative discretionary subset; food/transport/bills/other are excluded.
+  for (const auto* source : std::array{"manual", "demo"}) {
+    std::vector<Purchase> purchases;
+    for (const auto& t : state.at("finance").at("transactions")) {
+      if (t.at("source") != source || (t.at("category") != "shopping" && t.at("category") != "entertainment")) continue;
+      const auto at = timestamp_millis(t.at("occurredAt"));
+      if (at > now_ms || now_ms - at > lookback_ms) continue;
+      purchases.push_back({&t, at});
+    }
+    std::sort(purchases.begin(), purchases.end(), [](const Purchase& a, const Purchase& b) {
+      return a.at != b.at ? a.at < b.at : a.transaction->at("id").get<std::string>() < b.transaction->at("id").get<std::string>();
+    });
+    std::size_t right = 0, previous_end = 0;
+    for (std::size_t left = 0; left < purchases.size(); ++left) {
+      while (right < purchases.size() && purchases[right].at - purchases[left].at <= window_ms) ++right;
+      // Omit windows fully contained in an already reported window.
+      if (right - left < 3 || right <= previous_end) continue;
+      previous_end = right;
+      std::int64_t total = 0;
+      for (auto i = left; i < right; ++i) total += purchases[i].transaction->at("amountCents").get<std::int64_t>();
+      const auto count = right - left;
+      result.push_back({{"id", std::string("cluster-") + source + "-" + purchases[left].transaction->at("id").get<std::string>() + "-" + purchases[right - 1].transaction->at("id").get<std::string>()},
+        {"kind", "frequency"}, {"title", std::to_string(count) + " purchases within four hours"},
+        {"description", "You recorded " + std::to_string(count) + " shopping and entertainment purchases within four hours."},
+        {"evidence", {{"count", count}, {"windowDays", 4.0 / 24.0}, {"totalAmount", total / 100.0}}},
+        {"source", source}, {"suggestion", "Consider reviewing this group of purchases."}});
+    }
+  }
+  return result;
+}
 Json spending_insights(const Json& state, std::int64_t now_ms) {
   require_account(state); std::vector<Json> groups;
   for (const auto& t : state.at("finance").at("transactions")) {
@@ -62,6 +102,7 @@ Json spending_insights(const Json& state, std::int64_t now_ms) {
       {"evidence", {{"count", count}, {"windowDays", 7}, {"totalAmount", group.at("totalCents").get<std::int64_t>() / 100.0}}},
       {"source", source}, {"suggestion", "Consider a small spending challenge that suits you."}});
   }
+  for (const auto& insight : discretionary_clusters(state, now_ms)) result.push_back(insight);
   return result;
 }
 }

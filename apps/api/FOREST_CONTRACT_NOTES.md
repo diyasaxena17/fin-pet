@@ -34,3 +34,21 @@ by both versions; separate native boundary tests cover the new 48-hour rule.
 - The existing frontend maps /tap to feeding and /check-in to the read-only
   daily report. Changing /tap's page behavior belongs to FE; this API-only branch
   cannot claim to have changed the NFC page. GET reports remain read-only.
+
+## Insight compatibility
+
+V2 clustering reuses the existing `kind:"frequency"` and evidence fields.
+`windowDays=4/24` represents four hours without adding an unagreed kind or key.
+IDs start with `cluster-`; descriptions report only observed shopping and
+entertainment purchases in the last seven days, with manual/demo evidence kept
+separate. Food, bills, transport and other are not classified as discretionary.
+Planned and unplanned purchases both count: this is not an impulsivity claim.
+Sorted timestamps and ID tie-breaking give deterministic maximal windows of at
+least three purchases spanning at most four hours. Contained windows are omitted;
+overlapping windows with different end purchases may each be reported accurately.
+
+Existing exact-name, seven-day frequency observations (including Takeout) retain
+their IDs and fields. The frozen shared mock currently implements that old rule
+only. FE can render both shapes, but its mock needs the new clustering behavior
+before full v2 parity can be claimed. The shared owner should freeze the
+shopping/entertainment classification and four-hour evidence convention.

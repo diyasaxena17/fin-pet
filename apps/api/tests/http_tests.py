@@ -282,6 +282,23 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
         self.assertEqual(self.server.call('GET', '/api/device/state'), device)
 
+    def test_discretionary_clusters_use_existing_evidence_shape_and_survive_restart(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        base = datetime.now(timezone.utc) - timedelta(hours=3)
+        for i, category in enumerate(['shopping', 'entertainment', 'shopping']):
+            api('POST', '/api/transactions', {'requestId': request_id(), 'name': f'Purchase {i}', 'amount': i + 1,
+                'category': category, 'occurredAt': (base + timedelta(minutes=30*i)).isoformat(timespec='milliseconds')})
+        before = api('GET', '/api/state')
+        insights = api('GET', '/api/insights')['insights']
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0]['kind'], 'frequency')
+        self.assertEqual(insights[0]['source'], 'manual')
+        self.assertEqual(insights[0]['evidence'], {'count': 3, 'windowDays': 4/24, 'totalAmount': 6})
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.restart()
+        self.assertEqual(self.server.call('GET', '/api/insights')['insights'], insights)
+
     def test_reflections_require_48_hours_and_preserve_existing_reviews(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)
