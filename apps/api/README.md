@@ -1,12 +1,16 @@
-# Mochi C++20 API
+# Squirrel & Tree C++20 API
 
-A native C++20 backend using cpp-httplib, nlohmann/json, and SQLite3. The existing
+A squirrel companion and growing savings tree help make everyday financial
+habits visible. Acorns and XP reward positive decisions, while confirmed savings
+grow the tree and reveal the original Future Me letter.
+
+The native C++20 backend uses cpp-httplib, nlohmann/json, and SQLite3. The existing
 React app consumes the frozen standalone JSON contract without frontend changes.
 
 For the complete phone/NFC/Pi rehearsal, use [HARDWARE_DEMO.md](HARDWARE_DEMO.md):
 startup, LAN/firewall checks, controller hookup, live steps, and troubleshooting.
 
-## Squirrel & Tree v2 backend branch
+## Squirrel & Tree backend
 
 The native v2 work is documented in [FOREST_DEMO.md](FOREST_DEMO.md), with
 [contract/FE/hardware gaps](FOREST_CONTRACT_NOTES.md) and
@@ -16,7 +20,8 @@ the existing insight shape, an explicit gated `--seed-forest-demo` command, and
 stronger SQLite/date-boundary checks. Old HTTP seed inputs and ledger behavior
 remain compatible. New daily_checkin/goal_milestone device emissions require
 hardware/shared-contract agreement and remain deferred; the strict poller is
-unchanged. The optional squirrel-name preference also awaits a frozen field.
+unchanged. Squirrel names and cute/calm voice preferences persist without
+changing internal IDs or erasing progress.
 
 ## Build, test, run
 
@@ -131,7 +136,7 @@ day resets the consecutive count without subtracting earned progress.
 Errors use the frozen envelope and codes, for example:
 
 ```json
-{"error":{"code":"INSUFFICIENT_COINS","message":"You need 20 Mochi coins to feed your pet."}}
+{"error":{"code":"INVALID_REQUEST","message":"Invalid JSON request."}}
 ```
 
 Invalid requests return 400, unavailable/uninitialized routes 404, onboarding,
@@ -153,14 +158,14 @@ Keep each operation's UUID when retrying it; use a new UUID for a new action.
 ```sh
 curl -s http://localhost:3000/health
 curl -s http://localhost:3000/api/state
-curl -s http://localhost:3000/api/onboarding -H 'Content-Type: application/json' -d '{"petName":"Mochi","goalTitle":"Emergency fund","goalTarget":200,"letter":{"vision":"A secure future.","why":"More choices.","reminder":"Small steps count."}}'
+curl -s http://localhost:3000/api/onboarding -H 'Content-Type: application/json' -d '{"petName":"Clover","goalTitle":"Emergency fund","goalTarget":200,"letter":{"vision":"A secure future.","why":"More choices.","reminder":"Small steps count."}}'
 curl -s http://localhost:3000/api/decisions -H 'Content-Type: application/json' -d '{"requestId":"11111111-1111-4111-8111-111111111111","itemName":"Hoodie","amount":60,"decision":"skip"}'
 curl -s http://localhost:3000/api/savings -H 'Content-Type: application/json' -d '{"requestId":"22222222-2222-4222-8222-222222222222","amount":50}'
 curl -s http://localhost:3000/api/feed -H 'Content-Type: application/json' -d '{"requestId":"33333333-3333-4333-8333-333333333333","petId":"mochi-01"}'
 ```
 
 Expected result: 40 coins, 50 XP, $60 potential savings, $50 confirmed savings,
-25% goal progress, one revealed letter section, fullness 80, happy pet.
+25% goal progress, one revealed letter section, fullness 80, happy squirrel.
 With `DEMO_MODE=true`, judges can use:
 
 ```sh
@@ -187,7 +192,7 @@ curl -s 'http://localhost:3000/api/transactions?month=2026-11'
 
 With no other November records, the transaction response has `spentThisMonth:18`,
 `remainingThisMonth:482`, and food spending of 18 against a limit of 100. Savings,
-XP, acorns, pet and letter state stay unchanged. Inputs/outputs use CAD dollars;
+XP, acorns, squirrel and letter state stay unchanged. Inputs/outputs use CAD dollars;
 storage and totals use integer cents. Manual submissions always return
 `source:"manual"`; seeded records retain `source:"demo"`. Clients cannot set source
 or submit computed totals.
@@ -251,7 +256,7 @@ verdicts remain `worth_it`, `unsure`, and `not_worth_it`; `regret` is not an API
 alias. The saved transaction contains `reflection: { verdict, reflectedAt }` and
 keeps its original `manual` or `demo` source. The response is `{ transaction,
 state }`. These are the user's judgements; the API draws no psychological
-conclusions and changes no savings, rewards, goals, pet or letter state.
+conclusions and changes no savings, rewards, goals, squirrel or letter state.
 
 ```sh
 curl -s http://localhost:3000/api/reflections/due
@@ -560,7 +565,7 @@ Without a controller, it runs in dry-run mode and prints observed events:
 python3 apps/api/examples/poll_device.py http://<LAPTOP_LAN_IP>:3000 --dry-run
 # Once the existing hardware controller is available on the Pi:
 python3 apps/api/examples/poll_device.py http://<LAPTOP_LAN_IP>:3000 \
-  --controller /home/pi/mochi/controller.py --sound
+  --controller /home/pi/squirrel/controller.py --sound
 ```
 
 The first valid snapshot on every boot is a baseline without animation, even
