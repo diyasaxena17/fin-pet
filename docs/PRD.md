@@ -16,6 +16,8 @@ Mochi is a physical AI-powered financial companion that turns small, intentional
 
 Core product promise: Today's small habits bring you closer to the future you wrote about.
 
+Application delivery: Mochi is a mobile-first, full-stack application delivered through the browser. React provides interactive application screens and navigation; Express provides validated actions, persistent shared state, rewards, milestones, and device events. The app must support complete user journeys, including loading, empty, error, confirmation, and success states. Acceptance requires saved user progress to survive reloads and API restarts, with NFC/QR feeding connected to the QNX device.
+
 Primary user: Gen Z student or young adult beginning to save, who finds long-term planning abstract or intimidating.
 
 Demo path: Set a $200 goal + write three-part letter → skip a $60 hoodie (+60 virtual coins, $60 potential savings) → record $50 actually saved (self-reported: 25% progress) → reveal first Future Me message → tap NFC → confirm feed (−20 coins) → QNX tail wags. Separately, QNX camera recognizes open palm and greets the user.
