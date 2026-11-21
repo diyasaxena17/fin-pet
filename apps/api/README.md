@@ -331,6 +331,39 @@ records a UUID or emits a hardware reaction. Repeated reads leave persisted
 payload and request history unchanged. Uninitialized accounts return 404
 `NOT_INITIALIZED`; query parameters return 400 `INVALID_REQUEST`.
 
+## Daily check-ins and hardware compatibility (BE-07)
+
+`POST /api/check-ins` accepts exactly `{ "requestId": "<UUID>" }`, without query
+parameters. An initialized level-2 account can explicitly confirm once per current
+app-local day for 10 acorns and 20 XP. It returns `{ completedToday, reward, state }`.
+The legacy `/api/quests/complete` route with `questId:"daily-check-in"` uses the
+same completion date, streak and successful request history; it cannot award a
+second same-day reward. Same-ID and fresh-ID retries return no extra reward.
+Wrong-level requests fail with 409 `QUEST_UNAVAILABLE` without consuming their ID.
+
+The mutation captures the local date after acquiring the database transaction.
+Completion, wallet/XP, successful UUID and any supported level-up reaction commit
+atomically. Concurrent confirmations and process restarts preserve deduplication.
+The authoritative daily report reflects this same state; GET never confirms a
+check-in or triggers a reaction. Both explicit completion routes reject unexpected
+query parameters with 400 `INVALID_REQUEST`.
+
+**Hardware mapping required:** the frozen contract reserves `daily_checkin` but
+permits only `feed`, `level_up`, `greeting` (or null). The current poller rejects
+other event names. A normal check-in therefore emits no dedicated physical event;
+reusing a feed/greeting event would mislabel it. Hardware and shared-contract
+owners must agree on the `daily_checkin` mapping and poller behavior, plus event
+precedence when a check-in crosses a level, before enabling one sequence increment
+per first daily completion. This ticket preserves supported level-up behavior and
+existing feeding/gesture sequences instead of emitting an incompatible event.
+
+`/api/device/state` remains gated by `ENABLE_DEVICE_API=true` (404 otherwise).
+Enabled responses retain exactly `petId`, `mood`, `hunger`, `reactionSeq`,
+`reactionType`; no letter, financial information, request IDs or user name leaks.
+Check-in retries and report reads leave existing reaction cursors untouched.
+The existing latest-date ledger does not protect against clock rollback to a
+previously rewarded historical day; that BE-01 limitation remains unchanged.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the

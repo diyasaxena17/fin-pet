@@ -717,6 +717,63 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/lessons/answer', answer)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
 
+    def test_check_in_first_completion_race_privacy_and_restart(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        api('POST', '/api/demo/seed', {'xp': 100, 'coins': 20})
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        api('POST', '/api/feed', feed)
+        device = api('GET', '/api/device/state')
+        self.assertEqual(set(device), {'petId', 'mood', 'hunger', 'reactionSeq', 'reactionType'})
+        self.assertEqual(device['reactionType'], 'feed')
+        before = api('GET', '/api/state')
+        saved = self.storage_snapshot()
+        for _ in range(3):
+            report = api('GET', '/api/reports/today')
+            self.assertFalse(report['completedToday'])
+            self.assertEqual(api('GET', '/api/device/state'), device)
+        check_in = {'requestId': request_id()}
+        api('POST', '/api/check-ins?extra=1', check_in, 400)
+        api('POST', '/api/quests/complete?extra=1', {**check_in, 'questId': 'daily-check-in'}, 400)
+        for invalid in [{}, {'requestId': 'bad'}, {**check_in, 'extra': True}]:
+            api('POST', '/api/check-ins', invalid, 400)
+        self.assertEqual(self.storage_snapshot(), saved)
+        # Race first completion using fresh IDs through both routes and shared-ID retries.
+        def complete(i):
+            body = check_in if i < 4 else {'requestId': request_id()}
+            if i % 2:
+                return api('POST', '/api/check-ins', body)['state']
+            return api('POST', '/api/quests/complete', {**body, 'questId': 'daily-check-in'})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            states = list(pool.map(complete, range(12)))
+        self.assertTrue(all(s['wallet']['coins'] == 10 and s['wallet']['xp'] == 120 for s in states))
+        final = api('GET', '/api/state')
+        for key in ['goal', 'letter', 'pet', 'forest']:
+            self.assertEqual(final[key], before[key])
+        report = api('GET', '/api/reports/today')
+        self.assertTrue(report['completedToday'])
+        self.assertEqual(report['streakDays'], 1)
+        self.assertEqual(report['availableReward'], {'coins': 0, 'xp': 0})
+        # No unsupported event is emitted: frozen hardware mapping is still pending.
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(api('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/check-ins', {'requestId': request_id()})['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/quests/complete', {'requestId': request_id(), 'questId': 'daily-check-in'}), final)
+        self.restart(device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), final)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertTrue(api('GET', '/api/reports/today')['completedToday'])
+        self.assertEqual(api('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/feed', feed), final)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.restart(device=False)
+        api = self.server.call
+        api('GET', '/api/device/state', status=404)
+        api('POST', '/api/device/gesture', {'gesture': 'feed'}, 404)
+        self.assertEqual(api('GET', '/api/state'), final)
+
     def test_daily_report_is_read_only_and_check_in_aliases_share_one_reward(self):
         self.restart(device=True)
         api = self.server.call
