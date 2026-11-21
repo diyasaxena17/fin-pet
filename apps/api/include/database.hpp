@@ -20,6 +20,6 @@ class Database {
   sqlite3* db_ = nullptr;
   std::mutex mutex_;
   void exec(const char* sql);
-  Json load();
+  Json load(bool allow_v1 = false);
 };
 }

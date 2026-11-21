@@ -159,7 +159,11 @@ Json validate_input(Action action, Json input) {
       if (input.at("verdict") != "worth_it" && input.at("verdict") != "unsure" && input.at("verdict") != "not_worth_it") invalid();
       break;
     case Action::preferences:
-      fields(input, {"voice"}); if (input.at("voice") != "cute" && input.at("voice") != "calm") invalid(); break;
+      fields(input, {}, {"voice", "petName"});
+      if (input.empty()) invalid();
+      if (input.contains("voice") && input.at("voice") != "cute" && input.at("voice") != "calm") invalid();
+      if (input.contains("petName")) input["petName"] = text(input.at("petName"), 200, true);
+      break;
     case Action::budget:
       fields(input, {"month", "monthlyLimit"}, {"dailyLimit", "categoryLimits"});
       if (!input.at("month").is_string()) invalid();

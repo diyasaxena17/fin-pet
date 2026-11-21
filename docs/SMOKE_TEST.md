@@ -76,3 +76,21 @@ require `crypto.randomUUID`, which is restricted to secure contexts.
 
 For isolated frontend work, `VITE_USE_MOCK=true` uses the same validation/rules
 but session memory only. It does not demonstrate restart persistence.
+
+## Squirrel name and voice settings
+
+- [ ] Visit Settings after onboarding: name and saved voice are prefilled.
+- [ ] Edit the name and tone; preview/reset makes no preference PUT or reward.
+- [ ] Preview cute and calm when speech is available. Unsupported/error states
+  still permit saving; stop/changing tone/leaving cancels the preview.
+- [ ] Reject a whitespace-only name without sending a request. Server rejects
+  invalid/unknown fields without partially updating the name or voice.
+- [ ] Force a failed save: the draft remains, retry succeeds, and the dashboard
+  uses the saved name. Reset changes only the unsaved draft.
+- [ ] Restart with the same DB and reload Settings: both values persist.
+- [ ] Voice-only and name-only API requests preserve the omitted value.
+- [ ] Letter, goal, rewards and private device state remain unchanged.
+
+The isolated `pnpm --filter @mochi/web test:preferences-browser` harness covers
+loading, real save/retry/restart and desktop/mobile layouts. See
+`docs/PREFERENCES_VERIFICATION.md` for dependencies, commands and observed limits.

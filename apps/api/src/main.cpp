@@ -1,5 +1,6 @@
 #include "http_server.hpp"
 #include "game_logic.hpp"
+#include "demo.hpp"
 #include <cstdlib>
 #include <iostream>
 
@@ -14,8 +15,14 @@ bool flag(const char* name) {
   return value == "true";
 }
 }
-int main() {
+int main(int argc, char** argv) {
   try {
+    if (argc > 2 || (argc == 2 && std::string(argv[1]) != "--seed-forest-demo"))
+      throw std::runtime_error("Usage: mochi-api [--seed-forest-demo]");
+    const bool seed_demo = argc == 2;
+    const bool demo_mode = flag("DEMO_MODE"), device_api = flag("ENABLE_DEVICE_API");
+    if (seed_demo && (!demo_mode || env("DB_PATH", "").empty()))
+      throw std::runtime_error("Forest demo seeding requires DEMO_MODE=true and an explicit DB_PATH");
     const auto port_text = env("PORT", "3000");
     std::size_t used = 0;
     const auto port = std::stoi(port_text, &used);
@@ -24,8 +31,13 @@ int main() {
     const auto db_path = env("DB_PATH", MOCHI_DEFAULT_DB);
     if (db_path.empty()) throw std::runtime_error("DB_PATH must not be empty");
     mochi::Database db(db_path);
+    if (seed_demo) {
+      const auto added = mochi::seed_forest_demo(db);
+      std::cout << mochi::Json{{"seededTransactions", added}}.dump() << std::endl;
+      return 0;
+    }
     httplib::Server server;
-    mochi::configure_server(server, db, {flag("DEMO_MODE"), flag("ENABLE_DEVICE_API")});
+    mochi::configure_server(server, db, {demo_mode, device_api});
     const auto host = env("API_HOST", "0.0.0.0");
     std::cout << "Mochi C++ API listening at http://" << host << ':' << port << std::endl;
     if (!server.listen(host, port)) throw std::runtime_error("Could not bind API_HOST/PORT");

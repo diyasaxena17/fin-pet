@@ -44,7 +44,10 @@ void validate_month(const std::string& month) { month_format(month); }
 bool is_category(const Json& value) { return category(value); }
 void apply_finance_action(Json& state, Action action, const Json& input, std::int64_t now_ms) {
   require_account(state); auto& finance = state["finance"];
-  if (action == Action::preferences) finance["preferences"] = input;
+  if (action == Action::preferences) {
+    if (input.contains("voice")) finance["preferences"]["voice"] = input.at("voice");
+    if (input.contains("petName")) state["account"]["petName"] = input.at("petName");
+  }
   else if (action == Action::budget) {
     Json limits = Json::object();
     if (input.contains("categoryLimits")) for (const auto& [id, limit] : input.at("categoryLimits").items()) limits[id] = money_cents(limit);

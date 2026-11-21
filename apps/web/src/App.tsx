@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
+import { Settings } from './pages/Settings';
 import { CheckIn } from './pages/CheckIn';
 import { Dashboard } from './pages/Dashboard';
 import { Onboarding } from './pages/Onboarding';
@@ -17,6 +18,7 @@ export function App() {
           <NavLink to="/check-in">Check-in</NavLink>
           <NavLink to="/tap?petId=mochi-01">Feed</NavLink>
           <NavLink to="/future-me">Future Me</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
         </nav>
       </header>
       <main>
@@ -27,6 +29,7 @@ export function App() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/check-in" element={<CheckIn />} />
         <Route path="/tap" element={<Tap />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/future-me" element={<FutureMe />} />
         <Route path="*" element={<p>Page not found.</p>} />
       </Routes>}
