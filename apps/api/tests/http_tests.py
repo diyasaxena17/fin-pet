@@ -587,6 +587,96 @@ class HttpTests(unittest.TestCase):
         self.restart()
         self.assertEqual(self.server.call('POST', '/api/reflections', review)['transaction']['reflection'], old_review)
 
+    def test_lesson_catalogue_privacy_validation_and_level_thresholds(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        rules = Path(__file__).resolve().parents[3] / 'packages/contracts/fixtures/rules.json'
+        catalogue = json.loads(rules.read_text())['lessons']
+        before = self.storage_snapshot()
+        public = api('GET', '/api/lessons')['lessons']
+        self.assertEqual(self.storage_snapshot(), before)
+        self.assertEqual(len(public), 2)
+        for lesson, definition in zip(public, catalogue):
+            self.assertEqual(set(lesson), {'id', 'title', 'body', 'question', 'options', 'completed', 'availableReward'})
+            self.assertEqual(lesson['options'], definition['options'])
+            self.assertFalse(lesson['completed'])
+            self.assertEqual(lesson['availableReward'], {'coins': 5, 'xp': 10})
+            self.assertTrue(all(set(option) == {'id', 'label'} for option in lesson['options']))
+        first = catalogue[0]
+        answer = {'requestId': request_id(), 'lessonId': first['id'], 'selectedOptionId': first['correctOptionId']}
+        for changed, status in [({'lessonId': 'missing'}, 404), ({'selectedOptionId': 'missing'}, 400),
+                                ({'lessonId': ''}, 400), ({'selectedOptionId': None}, 400),
+                                ({'requestId': 'bad'}, 400), ({'correct': True}, 400)]:
+            api('POST', '/api/lessons/answer', {**answer, **changed}, status)
+        for field in answer:
+            api('POST', '/api/lessons/answer', {k: v for k, v in answer.items() if k != field}, 400)
+        api('GET', '/api/lessons?extra=1', status=400)
+        api('POST', '/api/lessons/answer?extra=1', answer, 400)
+        self.assertEqual(self.storage_snapshot(), before)
+        before_wrong = api('GET', '/api/state')
+        wrong_option = next(o['id'] for o in first['options'] if o['id'] != first['correctOptionId'])
+        wrong = api('POST', '/api/lessons/answer', {**answer, 'selectedOptionId': wrong_option})
+        self.assertEqual(set(wrong), {'correct', 'feedback', 'reward', 'state'})
+        self.assertFalse(wrong['correct'])
+        self.assertTrue(wrong['feedback'])
+        self.assertEqual(wrong['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(wrong['state'], before_wrong)
+        self.assertFalse(api('GET', '/api/lessons')['lessons'][0]['completed'])
+        # Wrong answers are successful submissions, so a corrected answer needs a fresh ID.
+        api('POST', '/api/lessons/answer', answer, 409)
+        for definition, starting_xp, level in zip(catalogue, [90, 240], [2, 3]):
+            if starting_xp == 90:
+                for _ in range(3):
+                    api('POST', '/api/savings', {'requestId': request_id(), 'amount': 1})
+            else:
+                for _ in range(7):
+                    api('POST', '/api/decisions', {'requestId': request_id(), 'itemName': 'Optional purchase',
+                                                 'amount': 1, 'decision': 'skip'})
+            baseline = api('GET', '/api/state')
+            self.assertEqual(baseline['wallet']['xp'], starting_xp)
+            body = {'requestId': request_id(), 'lessonId': definition['id'], 'selectedOptionId': definition['correctOptionId']}
+            result = api('POST', '/api/lessons/answer', body)
+            self.assertTrue(result['correct'])
+            self.assertEqual(result['reward'], {'coins': 5, 'xp': 10})
+            self.assertEqual(result['state']['wallet']['xp'], starting_xp + 10)
+            self.assertEqual(result['state']['wallet']['level'], level)
+            self.assertEqual(result['state']['goal'], baseline['goal'])
+            self.assertEqual(result['state']['letter'], baseline['letter'])
+            self.assertTrue(result['state']['quest']['available'])
+            if level == 3:
+                self.assertIn('expandedProjection', result['state']['unlockedFeatures'])
+
+    def test_lesson_concurrent_ids_reward_each_lesson_once_after_restart(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        rules = Path(__file__).resolve().parents[3] / 'packages/contracts/fixtures/rules.json'
+        catalogue = json.loads(rules.read_text())['lessons']
+        bodies = []
+        for lesson in catalogue:
+            body = {'requestId': request_id(), 'lessonId': lesson['id'], 'selectedOptionId': lesson['correctOptionId']}
+            # Race both the same successful ID and different IDs for this lesson.
+            requests = [body] * 4 + [{**body, 'requestId': request_id()} for _ in range(4)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda payload: api('POST', '/api/lessons/answer', payload), requests))
+            self.assertTrue(all(result['correct'] for result in results))
+            self.assertEqual(sum(result['reward']['coins'] for result in results), 5)
+            self.assertEqual(sum(result['reward']['xp'] for result in results), 10)
+            bodies.append(body)
+        state = api('GET', '/api/state')
+        self.assertEqual((state['wallet']['coins'], state['wallet']['xp']), (10, 20))
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            self.assertEqual(stored['finance']['completedLessons'], [lesson['id'] for lesson in catalogue])
+        self.restart()
+        api = self.server.call
+        for body in bodies:
+            for payload in [body, {**body, 'requestId': request_id()}]:
+                result = api('POST', '/api/lessons/answer', payload)
+                self.assertEqual(result['reward'], {'coins': 0, 'xp': 0})
+                self.assertEqual(result['state'], state)
+        self.assertTrue(all(lesson['completed'] and lesson['availableReward'] == {'coins': 0, 'xp': 0}
+                            for lesson in api('GET', '/api/lessons')['lessons']))
+
     def test_lessons_reward_once_validate_options_and_rollback_reactions(self):
         self.restart(device=True)
         api = self.server.call

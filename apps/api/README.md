@@ -271,6 +271,41 @@ Failed submissions consume no UUID and change no stored state. The reflection an
 successful UUID commit atomically, including rollback on storage failures. Reads
 are side-effect free.
 
+## Lessons and one-time rewards (BE-05)
+
+`GET /api/lessons` returns `{ "lessons": [...] }` for the two frozen lessons:
+`potential-vs-confirmed` (Small steps, real savings) and `budget-target` (Your
+spending target). The user confirmed preserving these definitions for BE-05;
+needs-vs-wants and emergency-funds topics would require a separate contract change.
+
+Each lesson includes its title, body, question, options, completion flag and
+available reward. GET omits `correctOptionId` and feedback; option objects contain
+only `id` and `label`. Both lesson routes require an initialized account and reject
+query parameters. Answer checking occurs on the server.
+
+```sh
+curl -s http://localhost:3000/api/lessons
+curl -s http://localhost:3000/api/lessons/answer -H 'Content-Type: application/json' -d '{"requestId":"66666666-6666-4666-8666-666666666666","lessonId":"potential-vs-confirmed","selectedOptionId":"save"}'
+```
+
+POST accepts exactly `requestId`, `lessonId`, `selectedOptionId` and returns
+`{ correct, feedback, reward, state }`. The first correct answer earns 5 acorns
+(`coins`) and 10 XP, atomically with completion and the successful request ID.
+Wrong answers return feedback and zero reward without completing the lesson;
+they are successful submissions and consume their request ID. Use a fresh ID to
+submit a different answer.
+
+Successful retries and fresh IDs for an already completed lesson earn zero and
+preserve completion across restarts. Concurrent submissions can earn only once per
+lesson. Lessons change no confirmed/potential savings or original letter content.
+Existing level thresholds (100/250 XP), unlocks and level-up reactions still apply.
+
+Malformed fields, unknown options and query parameters return 400
+`INVALID_REQUEST`; unknown lessons return 404 `NOT_FOUND`; an uninitialized account
+returns 404 `NOT_INITIALIZED`. Conflicting reuse of a successful UUID returns 409
+`REQUEST_ID_CONFLICT`. Failed requests consume no ID; storage failures roll back
+completion, reward, reactions and request history together.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the
