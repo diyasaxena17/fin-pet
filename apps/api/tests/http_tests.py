@@ -824,6 +824,59 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
 
+    def test_preference_voice_roundtrips_name_boundaries_and_storage_isolation(self):
+        self.restart(device=True)
+        api = self.server.call
+        original = api('POST', '/api/onboarding', ONBOARD)
+        self.assertEqual(original['preferences'], {'voice': 'cute'})
+        self.assertEqual(original['pet']['id'], 'mochi-01')
+        api('POST', '/api/decisions', {'requestId': request_id(), 'itemName': 'Optional purchase', 'amount': 60, 'decision': 'skip'})
+        api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        device = api('GET', '/api/device/state')
+        initial, history = self.storage_snapshot()
+        expected = json.loads(initial[0][1])
+        # Round-trip every frozen voice and restart after each successful save.
+        for voice in ['cute', 'calm', 'cute']:
+            result = api('PUT', '/api/preferences', {'voice': voice})
+            expected['finance']['preferences']['voice'] = voice
+            rows, requests = self.storage_snapshot()
+            self.assertEqual(json.loads(rows[0][1]), expected)
+            self.assertEqual(requests, history)
+            self.assertEqual(result['pet']['id'], 'mochi-01')
+            self.assertEqual(result['pet']['name'], ONBOARD['petName'])
+            self.assertEqual(api('GET', '/api/device/state'), device)
+            self.restart(device=True)
+            api = self.server.call
+            self.assertEqual(api('GET', '/api/state'), result)
+        # The shared limit is 200 UTF-16 units; supplementary characters count twice.
+        for name, saved_name in [('x'*200, 'x'*200), ('🐿'*100, '🐿'*100), (' \u00a0Clover\u00a0 ', 'Clover')]:
+            result = api('PUT', '/api/preferences', {'petName': name})
+            expected['account']['petName'] = saved_name
+            self.assertEqual(result['pet']['name'], saved_name)
+            self.assertEqual(result['preferences'], {'voice': 'cute'})
+            rows, requests = self.storage_snapshot()
+            self.assertEqual(json.loads(rows[0][1]), expected)
+            self.assertEqual(requests, history)
+        saved = self.storage_snapshot()
+        for body in [{}, [], None, {'voice': 'energetic', 'petName': 'Should not save'},
+                     {'voice': None}, {'voice': True}, {'petName': ''}, {'petName': '\u00a0 \n'},
+                     {'petName': 'x'*201, 'voice': 'calm'}, {'petName': '🐿'*101},
+                     {'petName': 42}, {'voice': 'calm', 'requestId': request_id()}]:
+            api('PUT', '/api/preferences', body, 400)
+            self.assertEqual(self.storage_snapshot(), saved)
+        api('PUT', '/api/preferences?extra=1', {'voice': 'calm'}, 400)
+        api('PUT', '/api/preferences', status=400, raw=b'{')
+        api('PUT', '/api/preferences', {'voice': 'calm'}, 400, content_type='text/plain')
+        self.assertEqual(self.storage_snapshot(), saved)
+        self.restart(device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), result)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(set(device), {'petId', 'mood', 'hunger', 'reactionSeq', 'reactionType'})
+        self.assertNotIn('voice', device)  # Strict legacy poller requires the original five-key payload.
+        self.restart(device=False)
+        self.server.call('GET', '/api/device/state', status=404)
+
     def test_name_and_voice_preferences_are_independent_atomic_and_persistent(self):
         self.restart(device=True)
         api = self.server.call

@@ -17,7 +17,7 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
   Json input;
   try {
     if (action == Action::budget || action == Action::transaction || action == Action::reflection || action == Action::lesson ||
-        action == Action::check_in || action == Action::quest) no_query(req);
+        action == Action::check_in || action == Action::quest || action == Action::preferences) no_query(req);
     const auto content_type = req.get_header_value("Content-Type");
     if (!std::regex_match(content_type, std::regex(R"(^application/json(\s*;.*)?$)", std::regex::icase)))
       throw ApiError(400, "INVALID_REQUEST", "Send a JSON request body.");
