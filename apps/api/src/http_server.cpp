@@ -10,9 +10,13 @@ void reply(httplib::Response& res, const Json& body, int status = 200) {
   res.status = status;
   res.set_content(body.dump(), "application/json");
 }
+void no_query(const httplib::Request& req) {
+  if (!req.params.empty()) throw ApiError(400, "INVALID_REQUEST", "This route takes no query parameters.");
+}
 void mutate(Database& db, Action action, const httplib::Request& req, httplib::Response& res) {
   Json input;
   try {
+    if (action == Action::budget || action == Action::transaction) no_query(req);
     const auto content_type = req.get_header_value("Content-Type");
     if (!std::regex_match(content_type, std::regex(R"(^application/json(\s*;.*)?$)", std::regex::icase)))
       throw ApiError(400, "INVALID_REQUEST", "Send a JSON request body.");
@@ -53,9 +57,6 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
     reply(res, {{"error", {{"code", error.code}, {"message", error.what()}}}}, error.status);
   }
 }
-void no_query(const httplib::Request& req) {
-  if (!req.params.empty()) throw ApiError(400, "INVALID_REQUEST", "This route takes no query parameters.");
-}
 std::string month_query(const httplib::Request& req) {
   if (req.params.size() != 1 || !req.has_param("month")) throw ApiError(400, "INVALID_REQUEST", "Supply one month query parameter.");
   const auto month = req.get_param_value("month"); validate_month(month); return month;
@@ -79,7 +80,10 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
     reply(res, budget_summary(state, month, local_day()));
   });
   server.Put("/api/budgets", [&db](const auto& req, auto& res) { mutate(db, Action::budget, req, res); });
-  server.Get("/api/transactions", [&db](const auto& req, auto& res) { reply(res, {{"transactions", transactions_for(db.read(), month_query(req))}}); });
+  server.Get("/api/transactions", [&db](const auto& req, auto& res) {
+    const auto month = month_query(req);
+    reply(res, {{"transactions", transactions_for(db.read(), month)}});
+  });
   server.Post("/api/transactions", [&db](const auto& req, auto& res) { mutate(db, Action::transaction, req, res); });
   server.Get("/api/insights", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"insights", spending_insights(db.read())}}); });
   server.Get("/api/reflections/due", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"transactions", due_reflections(db.read())}}); });

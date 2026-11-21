@@ -235,6 +235,116 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 999)
             self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
 
+    def storage_snapshot(self):
+        with sqlite3.connect(self.db) as db:
+            return (db.execute('SELECT * FROM app_state').fetchall(),
+                    db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall())
+
+    def test_budget_transaction_acceptance_and_restart(self):
+        api = self.server.call
+        before = api('POST', '/api/onboarding', ONBOARD)
+        empty = api('GET', '/api/budgets?month=2026-11')
+        self.assertIsNone(api('GET', '/api/reports/today')['underDailyLimit'])
+        self.assertEqual(set(empty), {'month', 'monthlyLimit', 'dailyLimit', 'spentThisMonth',
+                                      'spentToday', 'remainingThisMonth', 'categories'})
+        for key in ['monthlyLimit', 'dailyLimit', 'remainingThisMonth']:
+            self.assertIsNone(empty[key])
+        self.assertTrue(all(c['limit'] is None and c['spent'] == 0 for c in empty['categories']))
+        self.assertEqual(api('GET', '/api/transactions?month=2026-11'), {'transactions': []})
+        budget = {'month': '2026-11', 'monthlyLimit': 500, 'dailyLimit': 25,
+                  'categoryLimits': {'food': 100}}
+        api('PUT', '/api/budgets', budget)
+        purchase = {'requestId': request_id(), 'name': 'Lunch', 'amount': 18,
+                    'category': 'food', 'occurredAt': '2026-11-19T12:00:00-05:00'}
+        result = api('POST', '/api/transactions', purchase)
+        self.assertEqual(result['budget']['spentThisMonth'], 18)
+        self.assertEqual(result['budget']['remainingThisMonth'], 482)
+        food = next(c for c in result['budget']['categories'] if c['id'] == 'food')
+        self.assertEqual((food['spent'], food['limit']), (18, 100))
+        self.assertEqual(result['transaction'], {'id': 'txn-' + purchase['requestId'], 'name': 'Lunch',
+            'amount': 18, 'category': 'food', 'occurredAt': purchase['occurredAt'],
+            'planned': False, 'source': 'manual', 'reflection': None})
+        saved = self.storage_snapshot()
+        self.assertEqual(api('POST', '/api/transactions', purchase), result)
+        api('POST', '/api/transactions', {**purchase, 'amount': 19}, 409)
+        self.assertEqual(self.storage_snapshot(), saved)
+        state = api('GET', '/api/state')
+        for key in ['goal', 'wallet', 'letter', 'pet', 'forest']:
+            self.assertEqual(state[key], before[key])
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/budgets?month=2026-11'), result['budget'])
+        self.assertEqual(api('GET', '/api/transactions?month=2026-11'), {'transactions': [result['transaction']]})
+        self.assertEqual(api('POST', '/api/transactions', purchase), result)
+        with sqlite3.connect(self.db) as db:
+            finance = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])['finance']
+            self.assertEqual(finance['transactions'][0]['amountCents'], 1800)
+            self.assertEqual(finance['budgets']['2026-11'],
+                             {'monthlyCents': 50000, 'dailyCents': 2500, 'categoryCents': {'food': 10000}})
+
+    def test_budget_transaction_invalid_requests_leave_storage_unchanged(self):
+        api = self.server.call
+        # Query validation is deterministic even before onboarding.
+        for route in ['/api/budgets', '/api/transactions']:
+            api('GET', route + '?month=2026-13', status=400)
+            api('GET', route + '?month=2026-11', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        purchase = {'requestId': request_id(), 'name': 'Lunch', 'amount': 18,
+                    'category': 'food', 'occurredAt': '2026-11-19T12:00:00Z'}
+        budget = {'month': '2026-11', 'monthlyLimit': 500, 'dailyLimit': 25}
+        before = self.storage_snapshot()
+        for amount in [-1, 0, .001, 18.123, '18', None, True, 1000000001]:
+            api('POST', '/api/transactions', {**purchase, 'amount': amount}, 400)
+            for field in ['monthlyLimit', 'dailyLimit']:
+                api('PUT', '/api/budgets', {**budget, field: amount}, 400)
+            api('PUT', '/api/budgets', {**budget, 'categoryLimits': {'food': amount}}, 400)
+        for changed in [{'category': 'unknown'}, {'occurredAt': '2026-02-30T12:00:00Z'},
+                        {'occurredAt': '2026-11-19T12:00:00'}, {'occurredAt': '2026-11-19T24:00:00Z'},
+                        {'occurredAt': '2026-11-19T12:00:00+24:00'}, {'occurredAt': '2099-01-01T00:00:00Z'},
+                        {'source': 'demo'}, {'spentThisMonth': 1}, {'name': '   '}, {'requestId': 'bad'}]:
+            api('POST', '/api/transactions', {**purchase, **changed}, 400)
+        for changed in [{'month': '2026-13'}, {'month': 202611}, {'month': '2026-1'},
+                        {'categoryLimits': {'unknown': 1}}, {'categoryLimits': []}, {'spentThisMonth': 0}]:
+            api('PUT', '/api/budgets', {**budget, **changed}, 400)
+        for route in ['/api/budgets', '/api/transactions']:
+            for query in ['', '?month=2026-13', '?month=2026-11&month=2026-10', '?month=2026-11&extra=1']:
+                api('GET', route + query, status=400)
+        for method, route, body in [('PUT', '/api/budgets', budget), ('POST', '/api/transactions', purchase)]:
+            api(method, route + '?month=2026-10', body, 400)
+            for malformed in [{}, [], None]:
+                api(method, route, malformed, 400)
+            for token in ['NaN', 'Infinity', '1e999']:
+                field = 'amount' if method == 'POST' else 'monthlyLimit'
+                raw = json.dumps(body).replace(f'"{field}": {body[field]}', f'"{field}": {token}').encode()
+                api(method, route, status=400, raw=raw)
+            api(method, route, status=400, raw=b'{')
+        self.assertEqual(self.storage_snapshot(), before)
+        # The ID used throughout the failed submissions is still available.
+        api('POST', '/api/transactions', purchase)
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
+    def test_transaction_month_boundaries_use_toronto(self):
+        api = self.server.call
+        before = api('POST', '/api/onboarding', ONBOARD)
+        # Completed historical month boundaries in Toronto: EDT vs EST.
+        cases = [('2026-11-01T03:59:59.999Z', '2026-10'),
+                 ('2026-11-01T04:00:00Z', '2026-11'),
+                 ('2026-11-01T00:00:00-04:00', '2026-11'),
+                 ('2026-03-01T04:59:59.999Z', '2026-02'),
+                 ('2026-03-01T05:00:00Z', '2026-03')]
+        expected = {}
+        for timestamp, month in cases:
+            result = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Boundary',
+                         'amount': .01, 'category': 'other', 'occurredAt': timestamp})
+            self.assertEqual(result['budget']['month'], month)
+            expected.setdefault(month, []).append(result['transaction'])
+        for month, rows in expected.items():
+            self.assertEqual(api('GET', '/api/transactions?month=' + month), {'transactions': rows})
+            self.assertEqual(api('GET', '/api/budgets?month=' + month)['spentThisMonth'], len(rows) / 100)
+        state = api('GET', '/api/state')
+        for key in ['goal', 'wallet', 'letter']:
+            self.assertEqual(state[key], before[key])
+
     def test_preferences_budgets_transactions_and_retry_conflicts(self):
         api = self.server.call
         api('PUT', '/api/preferences', {'voice': 'calm'}, 404)

@@ -167,6 +167,42 @@ creates no earned activity. Reset clears the account, decisions and successful
 request IDs. Keep this single-user, unauthenticated demo on a trusted local
 network; do not enable demo controls on public hosting.
 
+## Budgets and manual transactions (BE-02)
+
+After onboarding, these requests configure targets and record spending:
+
+```sh
+curl -s 'http://localhost:3000/api/budgets?month=2026-11'
+curl -s -X PUT http://localhost:3000/api/budgets -H 'Content-Type: application/json' -d '{"month":"2026-11","monthlyLimit":500,"dailyLimit":25,"categoryLimits":{"food":100}}'
+curl -s http://localhost:3000/api/transactions -H 'Content-Type: application/json' -d '{"requestId":"44444444-4444-4444-8444-444444444444","name":"Lunch","amount":18,"category":"food","occurredAt":"2026-11-19T12:00:00-05:00"}'
+curl -s 'http://localhost:3000/api/transactions?month=2026-11'
+```
+
+With no other November records, the transaction response has `spentThisMonth:18`,
+`remainingThisMonth:482`, and food spending of 18 against a limit of 100. Savings,
+XP, acorns, pet and letter state stay unchanged. Inputs/outputs use CAD dollars;
+storage and totals use integer cents. Manual submissions always return
+`source:"manual"`; seeded records retain `source:"demo"`. Clients cannot set source
+or submit computed totals.
+
+Both GET routes require exactly one `month=YYYY-MM` parameter. Writes accept JSON
+bodies without query parameters. PUT replaces that month's targets; omitted daily
+and category limits become unconfigured. Missing limits and remaining balance are
+`null`, while actual spending starts at zero. The daily report's `underDailyLimit`
+is also `null` without a daily target; the frozen BudgetSummary has no status field.
+
+Calendar grouping uses `DEMO_TIME_ZONE` (default `America/Toronto`), independent of
+the host zone and the offset written in the timestamp. For example,
+`2026-11-01T03:59:59.999Z` belongs to October, while `04:00:00Z` belongs to November.
+`spentToday` counts only records on the app's current local day within the queried
+month. ISO timestamps require a date, time with seconds, and `Z` or an explicit
+offset; malformed dates and future purchases fail. Original valid timestamp text
+is preserved in responses. Use the same configured timezone across restarts.
+
+Retry a successful transaction with the same UUID and validated payload to avoid
+another row. Conflicting reuse returns 409. Invalid inputs return 400 without
+changing state or recording the UUID; correcting the input may reuse that ID.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the
