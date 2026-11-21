@@ -2,6 +2,7 @@
 #include "game_logic.hpp"
 #include "finance.hpp"
 #include "engagement.hpp"
+#include "learning.hpp"
 
 namespace mochi {
 namespace {
@@ -29,9 +30,22 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
   }
   try {
     const auto day = local_day();
+    Json reward = {{"coins", 0}, {"xp", 0}};
     const auto stored = db.mutate(input.value("requestId", std::string{}), req.path, input,
-      [&](Json& state) { apply_action(state, action, input, day); }, action == Action::reset);
-    reply(res, action == Action::gesture ? device_state(stored) : (action == Action::reflection ? reflection_response(stored, input, day) : finance_mutation_response(action, stored, input, day)));
+      [&](Json& state) {
+        const auto before = state.at("account");
+        apply_action(state, action, input, day);
+        if ((action == Action::check_in || action == Action::lesson) && !before.is_null())
+          reward = {{"coins", state.at("account").at("coins").get<std::int64_t>() - before.at("coins").get<std::int64_t>()},
+                    {"xp", state.at("account").at("xp").get<std::int64_t>() - before.at("xp").get<std::int64_t>()}};
+      }, action == Action::reset);
+    if (action == Action::gesture) reply(res, device_state(stored));
+    else if (action == Action::reflection) reply(res, reflection_response(stored, input, day));
+    else if (action == Action::lesson) reply(res, lesson_response(stored, input, day, reward));
+    else if (action == Action::check_in) {
+      const auto view = app_state(stored, day);
+      reply(res, {{"completedToday", view.at("quest").at("completedToday")}, {"reward", reward}, {"state", view}});
+    } else reply(res, finance_mutation_response(action, stored, input, day));
   } catch (const ApiError& error) {
     reply(res, {{"error", {{"code", error.code}, {"message", error.what()}}}}, error.status);
   }
@@ -64,6 +78,10 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
   server.Get("/api/insights", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"insights", spending_insights(db.read())}}); });
   server.Get("/api/reflections/due", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"transactions", due_reflections(db.read())}}); });
   server.Post("/api/reflections", [&db](const auto& req, auto& res) { mutate(db, Action::reflection, req, res); });
+  server.Get("/api/lessons", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"lessons", lessons(db.read())}}); });
+  server.Post("/api/lessons/answer", [&db](const auto& req, auto& res) { mutate(db, Action::lesson, req, res); });
+  server.Get("/api/reports/today", [&db](const auto& req, auto& res) { no_query(req); reply(res, daily_report(db.read(), local_day())); });
+  server.Post("/api/check-ins", [&db](const auto& req, auto& res) { mutate(db, Action::check_in, req, res); });
   if (options.demo_mode) {
     server.Post("/api/demo/seed", [&db](const auto& req, auto& res) { mutate(db, Action::seed, req, res); });
     server.Post("/api/demo/reset", [&db](const auto& req, auto& res) { mutate(db, Action::reset, req, res); });

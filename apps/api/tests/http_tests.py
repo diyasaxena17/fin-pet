@@ -245,6 +245,92 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
         self.assertEqual(self.server.call('GET', '/api/device/state'), device)
 
+    def test_lessons_reward_once_validate_options_and_rollback_reactions(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/lessons', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        lesson = api('GET', '/api/lessons')['lessons'][0]
+        self.assertNotIn('correctOptionId', lesson)
+        self.assertNotIn('feedback', lesson)
+        answer = {'requestId': request_id(), 'lessonId': lesson['id'], 'selectedOptionId': 'skip'}
+        wrong = api('POST', '/api/lessons/answer', answer)
+        self.assertFalse(wrong['correct'])
+        self.assertEqual(wrong['reward'], {'coins': 0, 'xp': 0})
+        api('POST', '/api/lessons/answer', {**answer, 'selectedOptionId': 'save'}, 409)
+        answer = {**answer, 'requestId': request_id(), 'selectedOptionId': 'missing'}
+        api('POST', '/api/lessons/answer', answer, 400)
+        answer['selectedOptionId'] = 'save'
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            stored['account']['xp'] = 95
+            db.execute('UPDATE app_state SET payload=?', (json.dumps(stored),))
+            db.execute("CREATE TRIGGER fail_lesson BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        api('POST', '/api/lessons/answer', answer, 500)
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_lesson')
+        correct = api('POST', '/api/lessons/answer', answer)
+        self.assertTrue(correct['correct'])
+        self.assertEqual(correct['reward'], {'coins': 5, 'xp': 10})
+        self.assertEqual(correct['state']['wallet']['xp'], 105)
+        self.assertEqual(api('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
+        for payload in [answer, {**answer, 'requestId': request_id()}]:
+            self.assertEqual(api('POST', '/api/lessons/answer', payload)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('GET', '/api/lessons')['lessons'][0]['availableReward'], {'coins': 0, 'xp': 0})
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/lessons/answer', answer)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(self.server.call('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
+
+    def test_daily_report_is_read_only_and_check_in_aliases_share_one_reward(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/reports/today', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        report = api('GET', '/api/reports/today')
+        self.assertIsNone(report['dailyLimit'])
+        self.assertIsNone(report['underDailyLimit'])
+        self.assertIsNone(report['achievement'])
+        check_in = {'requestId': request_id()}
+        api('POST', '/api/check-ins', check_in, 409)
+        api('POST', '/api/demo/seed', {'xp': 100})
+        api('PUT', '/api/budgets', {'month': report['date'][:7], 'monthlyLimit': 500, 'dailyLimit': 25})
+        api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Lunch', 'amount': 18, 'category': 'food',
+            'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        for _ in range(3):
+            report = api('GET', '/api/reports/today')
+            self.assertTrue(report['underDailyLimit'])
+            self.assertEqual(report['spentToday'], 18)
+            self.assertEqual(report['availableReward'], {'coins': 10, 'xp': 20})
+            self.assertFalse(report['completedToday'])
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_checkin BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        api('POST', '/api/check-ins', check_in, 500)
+        self.assertFalse(api('GET', '/api/reports/today')['completedToday'])
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_checkin')
+        first = api('POST', '/api/check-ins', check_in)
+        self.assertEqual(first['reward'], {'coins': 10, 'xp': 20})
+        self.assertTrue(first['completedToday'])
+        self.assertTrue(first['state']['today']['checkInCompleted'])
+        self.assertEqual(api('POST', '/api/quests/complete', {**check_in, 'questId': 'daily-check-in'}), first['state'])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            def complete(i):
+                return api('POST', '/api/check-ins', {'requestId': request_id()}) if i % 2 else api('POST', '/api/quests/complete', {'requestId': request_id(), 'questId': 'daily-check-in'})
+            list(pool.map(complete, range(8)))
+        self.assertEqual(api('GET', '/api/state')['wallet'], first['state']['wallet'])
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
+
     def test_validation_is_atomic(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)

@@ -1,6 +1,7 @@
 #include "game_logic.hpp"
 #include "finance.hpp"
 #include "engagement.hpp"
+#include "learning.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -147,6 +148,11 @@ Json validate_input(Action action, Json input) {
       if (input.contains("confirmedSaved")) money_cents(input.at("confirmedSaved"), true);
       break;
     case Action::reset: fields(input, {}); break;
+    case Action::check_in: fields(input, {"requestId"}); uuid(input.at("requestId")); break;
+    case Action::lesson:
+      fields(input, {"requestId", "lessonId", "selectedOptionId"}); uuid(input.at("requestId"));
+      if (text(input.at("lessonId"), 200, false).empty() || text(input.at("selectedOptionId"), 200, false).empty()) invalid();
+      break;
     case Action::reflection:
       fields(input, {"requestId", "transactionId", "verdict"}); uuid(input.at("requestId"));
       if (text(input.at("transactionId"), 200, false).empty()) invalid();
@@ -271,6 +277,7 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
   if (a.is_null()) throw ApiError(404, "NOT_INITIALIZED", "Set up Mochi before using this action.");
   const int before_level = level_for(a.at("xp").get<std::int64_t>());
   switch (action) {
+    case Action::lesson: apply_lesson(state, input); break;
     case Action::reflection: apply_reflection(state, input, current_millis()); break;
     case Action::preferences: case Action::budget: case Action::transaction:
       apply_finance_action(state, action, input, current_millis()); break;
@@ -289,7 +296,7 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
       a["coins"] = a.at("coins").get<std::int64_t>() - 20;
       a["hunger"] = std::min(100, a.at("hunger").get<int>() + 30);
       a["mood"] = "happy"; emit_reaction(state, "feed"); break;
-    case Action::quest:
+    case Action::quest: case Action::check_in:
       if (before_level < 2) throw ApiError(409, "QUEST_UNAVAILABLE", "Daily check-ins unlock at level 2.");
       if (a.at("lastQuestDate") != day) {
         if (a.at("lastQuestDate") == previous_day(day)) add(a["streakDays"], 1);
