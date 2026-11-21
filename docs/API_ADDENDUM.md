@@ -80,7 +80,10 @@ feedback and correctness for the selected option, with zero reward on replay.
 
 The shared types and schemas are exported by `@mochi/contracts`. See
 [response examples](../packages/contracts/fixtures/addendum.json); examples are
-independent shapes rather than a ledger. The report text must agree with its
+independent shapes rather than a ledger. The full unconfigured account is
+[addendum-app-state.json](../packages/contracts/fixtures/addendum-app-state.json),
+exported as frozen `addendumAppStateFixture` and isolated `createAddendumAppState()`.
+The V1 fixture stays unchanged. The report text must agree with its
 `completedToday` flag. Additive initialized state includes required `preferences`,
 full current-month `budgetSummary`, `today.checkInCompleted` and `forest`.
 `today` and report completion derive from the existing quest date.
