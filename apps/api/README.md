@@ -24,9 +24,15 @@ apps/api/build/mochi-api
 For a LAN demo with optional Raspberry Pi integration:
 
 ```sh
-DEMO_MODE=true ENABLE_DEVICE_API=true \
-  DB_PATH="$PWD/apps/api/data/demo.sqlite3" apps/api/build/mochi-api
+apps/api/scripts/start-demo.sh
 ```
+
+The launcher builds the native API, binds `0.0.0.0:3000`, enables device/demo
+routes, preserves `apps/api/data/demo.sqlite3`, and prints phone/NFC/Pi URLs.
+`LAN_IP` can override automatic IPv4 detection. Use `--no-build` for a subsequent
+run after building. `DB_PATH`, `API_HOST`, `PORT`, `DEMO_TIME_ZONE`, and
+`MOCHI_BUILD_DIR` can be overridden through the environment. The launcher fails
+early if the port is occupied and never resets or seeds an existing account.
 
 Run the existing frontend separately with `pnpm dev:web` and
 `VITE_USE_MOCK=false`. Its existing Vite proxy forwards `/api` to port 3000.
