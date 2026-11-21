@@ -25,6 +25,27 @@ describe('HTTP adapter contract', () => {
     ]);
     expect(JSON.parse(fetchMock.mock.calls[4]![1].body)).toEqual(savings);
   });
+  it('routes every additive method through the central adapter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    await httpApi.updatePreferences({ voice: 'calm' });
+    await httpApi.getBudgets('2026-11');
+    await httpApi.updateBudgets({ month: '2026-11', monthlyLimit: 500 });
+    await httpApi.getTransactions('2026-11');
+    await httpApi.recordTransaction({ requestId: createRequestId(), name: 'Lunch', amount: 18, category: 'food', occurredAt: '2026-11-19T12:00:00Z' });
+    await httpApi.getInsights(); await httpApi.getDueReflections();
+    await httpApi.reflect({ requestId: createRequestId(), transactionId: 'txn-demo-01', verdict: 'unsure' });
+    await httpApi.getLessons();
+    await httpApi.answerLesson({ requestId: createRequestId(), lessonId: 'budget-target', selectedOptionId: 'limit' });
+    await httpApi.getDailyReport(); await httpApi.checkIn({ requestId: createRequestId() });
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
+      ['/api/preferences', 'PUT'], ['/api/budgets?month=2026-11', 'GET'], ['/api/budgets', 'PUT'],
+      ['/api/transactions?month=2026-11', 'GET'], ['/api/transactions', 'POST'], ['/api/insights', 'GET'],
+      ['/api/reflections/due', 'GET'], ['/api/reflections', 'POST'], ['/api/lessons', 'GET'],
+      ['/api/lessons/answer', 'POST'], ['/api/reports/today', 'GET'], ['/api/check-ins', 'POST'],
+    ]);
+    expect(() => httpApi.getBudgets('2026-11&month=2026-10')).toThrow();
+  });
   it('surfaces API error codes and handles non-JSON errors', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: { code: 'INSUFFICIENT_COINS', message: 'You need 20 Mochi coins.' } }) }));
     await expect(httpApi.feedPet({ requestId: createRequestId(), petId: 'mochi-01' })).rejects.toMatchObject({ status: 409, code: 'INSUFFICIENT_COINS' } satisfies Partial<ApiError>);

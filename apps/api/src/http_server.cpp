@@ -8,7 +8,6 @@ namespace mochi {
 namespace {
 void reply(httplib::Response& res, const Json& body, int status = 200) {
   res.status = status;
-  res.set_header("Cache-Control", "no-store");
   res.set_content(body.dump(), "application/json");
 }
 void mutate(Database& db, Action action, const httplib::Request& req, httplib::Response& res) {
