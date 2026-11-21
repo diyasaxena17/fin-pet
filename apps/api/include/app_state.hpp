@@ -13,5 +13,5 @@ struct ApiError : std::runtime_error {
 };
 Json empty_state();
 void validate_stored_state(const Json& state);
-Json app_state(const Json& state);
+Json app_state(const Json& state, const std::string& day = "");
 }

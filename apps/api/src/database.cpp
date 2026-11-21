@@ -1,4 +1,5 @@
 #include "database.hpp"
+#include "game_logic.hpp"
 #include <filesystem>
 #include <memory>
 
@@ -86,7 +87,11 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
       insert.text(1, id); insert.text(2, endpoint); insert.text(3, input.dump()); insert.done();
       if (endpoint == "/api/decisions") {
         Statement decision(db_, "INSERT INTO decisions(request_id,payload) VALUES(?,?)");
-        decision.text(1, id); decision.text(2, input.dump()); decision.done();
+        auto stored_decision = input;
+        stored_decision["amountCents"] = money_cents(input.at("amount"));
+        stored_decision.erase("amount");
+        stored_decision["createdAtEpoch"] = std::time(nullptr);
+        decision.text(1, id); decision.text(2, stored_decision.dump()); decision.done();
       }
     }
     exec("COMMIT");

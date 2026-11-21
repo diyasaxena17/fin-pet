@@ -1,4 +1,5 @@
 #include "http_server.hpp"
+#include "game_logic.hpp"
 #include <cstdlib>
 #include <iostream>
 
@@ -19,6 +20,7 @@ int main() {
     std::size_t used = 0;
     const auto port = std::stoi(port_text, &used);
     if (used != port_text.size() || port < 1 || port > 65535) throw std::runtime_error("PORT must be 1..65535");
+    mochi::configure_timezone(env("DEMO_TIME_ZONE", "America/Toronto"));
     mochi::Database db(env("DB_PATH", MOCHI_DEFAULT_DB));
     httplib::Server server;
     mochi::configure_server(server, db, {flag("DEMO_MODE"), flag("ENABLE_DEVICE_API")});
