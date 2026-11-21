@@ -138,6 +138,13 @@ Invalid requests return 400, unavailable/uninitialized routes 404, onboarding,
 coin, quest, and balance conflicts 409, and storage/internal failures 500.
 Disabled demo routes and legacy `/api/onboard` and `/api/pet/feed` return 404.
 
+## Fourteen-day financial replay
+
+See [SANDBOX.md](SANDBOX.md) for the deterministic two-week dataset, read-only day
+selection, typed income/savings/investment ledger, and isolated SQLite sidecar.
+Use `DEMO_MODE=true DEMO_SANDBOX=true` with the existing native seed command to
+enter replay mode. Ordinary demo/API contracts remain unchanged.
+
 ## Copyable demo
 
 Use a fresh `DB_PATH`, or reset an existing throwaway demo account first.

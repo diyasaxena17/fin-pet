@@ -7,11 +7,13 @@
 namespace mochi {
 class Database {
  public:
-  explicit Database(const std::string& path);
+  explicit Database(const std::string& path, bool sandbox_only = false);
   ~Database();
   Database(const Database&) = delete;
   Database& operator=(const Database&) = delete;
   Json read();
+  Json sandbox_metadata();
+  void save_sandbox(const Json& snapshot);
   // Callback and request ID insertion run inside the same BEGIN IMMEDIATE.
   Json mutate(const std::string& request_id, const std::string& endpoint,
               const Json& input, const std::function<void(Json&)>& apply,
@@ -22,5 +24,6 @@ class Database {
   void exec(const char* sql);
   Json load(bool allow_v1 = false);
   void migrate(int version);
+  void require_sandbox_owner();
 };
 }

@@ -13,9 +13,10 @@ void reply(httplib::Response& res, const Json& body, int status = 200) {
 void no_query(const httplib::Request& req) {
   if (!req.params.empty()) throw ApiError(400, "INVALID_REQUEST", "This route takes no query parameters.");
 }
-void mutate(Database& db, Action action, const httplib::Request& req, httplib::Response& res) {
+void mutate(Database& db, Action action, const httplib::Request& req, httplib::Response& res, bool read_only) {
   Json input;
   try {
+    if (read_only) throw ApiError(409, "INVALID_REQUEST", "Historical sandbox snapshots are read-only; select a replay day with the native command.");
     if (action == Action::budget || action == Action::transaction || action == Action::reflection || action == Action::lesson ||
         action == Action::check_in || action == Action::quest || action == Action::preferences) no_query(req);
     const auto content_type = req.get_header_value("Content-Type");
@@ -69,39 +70,39 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
   server.set_payload_max_length(64 * 1024);
   server.Get("/health", [](const auto&, auto& res) { reply(res, {{"ok", true}}); });
   server.Get("/api/state", [&db](const auto&, auto& res) { reply(res, app_state(db.read())); });
-  server.Post("/api/onboarding", [&db](const auto& req, auto& res) { mutate(db, Action::onboard, req, res); });
-  server.Put("/api/letter", [&db](const auto& req, auto& res) { mutate(db, Action::letter, req, res); });
-  server.Post("/api/decisions", [&db](const auto& req, auto& res) { mutate(db, Action::decision, req, res); });
-  server.Post("/api/savings", [&db](const auto& req, auto& res) { mutate(db, Action::savings, req, res); });
-  server.Post("/api/feed", [&db](const auto& req, auto& res) { mutate(db, Action::feed, req, res); });
-  server.Post("/api/quests/complete", [&db](const auto& req, auto& res) { mutate(db, Action::quest, req, res); });
-  server.Put("/api/preferences", [&db](const auto& req, auto& res) { mutate(db, Action::preferences, req, res); });
+  server.Post("/api/onboarding", [&db, options](const auto& req, auto& res) { mutate(db, Action::onboard, req, res, options.sandbox_replay); });
+  server.Put("/api/letter", [&db, options](const auto& req, auto& res) { mutate(db, Action::letter, req, res, options.sandbox_replay); });
+  server.Post("/api/decisions", [&db, options](const auto& req, auto& res) { mutate(db, Action::decision, req, res, options.sandbox_replay); });
+  server.Post("/api/savings", [&db, options](const auto& req, auto& res) { mutate(db, Action::savings, req, res, options.sandbox_replay); });
+  server.Post("/api/feed", [&db, options](const auto& req, auto& res) { mutate(db, Action::feed, req, res, options.sandbox_replay); });
+  server.Post("/api/quests/complete", [&db, options](const auto& req, auto& res) { mutate(db, Action::quest, req, res, options.sandbox_replay); });
+  server.Put("/api/preferences", [&db, options](const auto& req, auto& res) { mutate(db, Action::preferences, req, res, options.sandbox_replay); });
   server.Get("/api/budgets", [&db](const auto& req, auto& res) {
     const auto month = month_query(req); const auto state = db.read();
     reply(res, budget_summary(state, month, local_day()));
   });
-  server.Put("/api/budgets", [&db](const auto& req, auto& res) { mutate(db, Action::budget, req, res); });
+  server.Put("/api/budgets", [&db, options](const auto& req, auto& res) { mutate(db, Action::budget, req, res, options.sandbox_replay); });
   server.Get("/api/transactions", [&db](const auto& req, auto& res) {
     const auto month = month_query(req);
     reply(res, {{"transactions", transactions_for(db.read(), month)}});
   });
-  server.Post("/api/transactions", [&db](const auto& req, auto& res) { mutate(db, Action::transaction, req, res); });
+  server.Post("/api/transactions", [&db, options](const auto& req, auto& res) { mutate(db, Action::transaction, req, res, options.sandbox_replay); });
   server.Get("/api/insights", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"insights", spending_insights(db.read())}}); });
   server.Get("/api/reflections/due", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"transactions", due_reflections(db.read())}}); });
-  server.Post("/api/reflections", [&db](const auto& req, auto& res) { mutate(db, Action::reflection, req, res); });
+  server.Post("/api/reflections", [&db, options](const auto& req, auto& res) { mutate(db, Action::reflection, req, res, options.sandbox_replay); });
   server.Get("/api/lessons", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"lessons", lessons(db.read())}}); });
-  server.Post("/api/lessons/answer", [&db](const auto& req, auto& res) { mutate(db, Action::lesson, req, res); });
+  server.Post("/api/lessons/answer", [&db, options](const auto& req, auto& res) { mutate(db, Action::lesson, req, res, options.sandbox_replay); });
   server.Get("/api/reports/today", [&db](const auto& req, auto& res) {
     no_query(req); const auto state = db.read(); reply(res, daily_report(state, local_day()));
   });
-  server.Post("/api/check-ins", [&db](const auto& req, auto& res) { mutate(db, Action::check_in, req, res); });
+  server.Post("/api/check-ins", [&db, options](const auto& req, auto& res) { mutate(db, Action::check_in, req, res, options.sandbox_replay); });
   if (options.demo_mode) {
-    server.Post("/api/demo/seed", [&db](const auto& req, auto& res) { mutate(db, Action::seed, req, res); });
-    server.Post("/api/demo/reset", [&db](const auto& req, auto& res) { mutate(db, Action::reset, req, res); });
+    server.Post("/api/demo/seed", [&db, options](const auto& req, auto& res) { mutate(db, Action::seed, req, res, options.sandbox_replay); });
+    server.Post("/api/demo/reset", [&db, options](const auto& req, auto& res) { mutate(db, Action::reset, req, res, options.sandbox_replay); });
   }
   if (options.device_api) {
     server.Get("/api/device/state", [&db](const auto&, auto& res) { reply(res, device_state(db.read())); });
-    server.Post("/api/device/gesture", [&db](const auto& req, auto& res) { mutate(db, Action::gesture, req, res); });
+    server.Post("/api/device/gesture", [&db, options](const auto& req, auto& res) { mutate(db, Action::gesture, req, res, options.sandbox_replay); });
   }
   server.set_error_handler([](const auto&, auto& res) {
     if (res.body.empty()) {

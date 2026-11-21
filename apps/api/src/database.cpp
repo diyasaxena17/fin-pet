@@ -58,7 +58,7 @@ void Database::exec(const char* sql) {
   if (sqlite3_exec(db_, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
     throw std::runtime_error(sqlite3_errmsg(db_));
 }
-Database::Database(const std::string& path) {
+Database::Database(const std::string& path, bool sandbox_only) {
   if (path != ":memory:") {
     const auto parent = std::filesystem::path(path).parent_path();
     if (!parent.empty()) std::filesystem::create_directories(parent);
@@ -71,6 +71,7 @@ Database::Database(const std::string& path) {
   }
   try {
     sqlite3_busy_timeout(db_, 5000);
+    if (sandbox_only) require_sandbox_owner(); // Before journal changes or v1 migration.
     exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     exec("BEGIN IMMEDIATE");
     {
@@ -130,6 +131,56 @@ Json Database::read() {
   std::lock_guard lock(mutex_);
   return load();
 }
+void Database::require_sandbox_owner() {
+  Statement marker(db_, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_replay'");
+  if (sqlite3_step(marker.stmt) == SQLITE_ROW) {
+    Statement owner(db_, "SELECT payload FROM sandbox_replay WHERE id=1");
+    if (sqlite3_step(owner.stmt) != SQLITE_ROW ||
+        Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(owner.stmt, 0))).value("dataset", "") != "mochi-sandbox-14-v1")
+      throw std::runtime_error("Invalid sandbox ownership marker");
+    return;
+  }
+  Statement tables(db_, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+  if (sqlite3_step(tables.stmt) == SQLITE_ROW && sqlite3_column_int(tables.stmt, 0) == 0) return;
+  Statement history(db_, "SELECT (SELECT count(*) FROM processed_requests)+(SELECT count(*) FROM decisions)");
+  if (load() != empty_state() || sqlite3_step(history.stmt) != SQLITE_ROW || sqlite3_column_int64(history.stmt, 0) != 0)
+    throw std::runtime_error("Refusing to replace an unowned database with sandbox activity");
+}
+Json Database::sandbox_metadata() {
+  std::lock_guard lock(mutex_);
+  Statement exists(db_, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_replay'");
+  if (sqlite3_step(exists.stmt) != SQLITE_ROW) return nullptr;
+  Statement query(db_, "SELECT payload FROM sandbox_replay WHERE id=1");
+  if (sqlite3_step(query.stmt) != SQLITE_ROW) throw std::runtime_error("Missing sandbox ownership metadata");
+  return Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 0)));
+}
+void Database::save_sandbox(const Json& snapshot) {
+  std::lock_guard lock(mutex_);
+  validate_current_state(snapshot.at("state"));
+  exec("BEGIN IMMEDIATE");
+  try {
+    require_sandbox_owner();
+    exec("CREATE TABLE IF NOT EXISTS sandbox_replay (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)");
+    Statement state(db_, "UPDATE app_state SET payload=? WHERE id=1");
+    state.text(1, snapshot.at("state").dump()); state.done();
+    exec("DELETE FROM processed_requests; DELETE FROM decisions");
+    for (const auto& request : snapshot.at("requests")) {
+      Statement insert(db_, "INSERT INTO processed_requests(request_id,endpoint,payload) VALUES(?,?,?)");
+      insert.text(1, request.at("input").at("requestId")); insert.text(2, request.at("endpoint"));
+      insert.text(3, request.at("input").dump()); insert.done();
+      if (request.at("endpoint") == "/api/decisions") {
+        auto decision = request.at("input");
+        decision["amountCents"] = money_cents(decision.at("amount")); decision.erase("amount");
+        decision["createdAtEpoch"] = request.at("at").get<std::int64_t>() / 1000;
+        Statement history(db_, "INSERT INTO decisions(request_id,payload) VALUES(?,?)");
+        history.text(1, decision.at("requestId")); history.text(2, decision.dump()); history.done();
+      }
+    }
+    Statement meta(db_, "INSERT OR REPLACE INTO sandbox_replay(id,payload) VALUES(1,?)");
+    meta.text(1, snapshot.at("metadata").dump()); meta.done();
+    exec("COMMIT");
+  } catch (...) { sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr); throw; }
+}
 Json Database::mutate(const std::string& id, const std::string& endpoint,
                       const Json& input, const std::function<void(Json&)>& apply, bool reset) {
   std::lock_guard lock(mutex_);
@@ -164,7 +215,7 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
         auto stored_decision = input;
         stored_decision["amountCents"] = money_cents(input.at("amount"));
         stored_decision.erase("amount");
-        stored_decision["createdAtEpoch"] = std::time(nullptr);
+        stored_decision["createdAtEpoch"] = game_now();
         decision.text(1, id); decision.text(2, stored_decision.dump()); decision.done();
       }
     }

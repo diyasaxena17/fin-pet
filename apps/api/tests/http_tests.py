@@ -26,7 +26,7 @@ def request_id():
 
 
 class Server:
-    def __init__(self, db_path, demo=True, device=False, port=None):
+    def __init__(self, db_path, demo=True, device=False, port=None, extra_env=None):
         if port is None:
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1', 0))
@@ -37,7 +37,7 @@ class Server:
         self.process = subprocess.Popen([BINARY], stdout=self.log, stderr=self.log, env={
             **os.environ, 'DB_PATH': str(db_path), 'API_HOST': '127.0.0.1', 'PORT': str(self.port),
             'DEMO_MODE': str(demo).lower(), 'ENABLE_DEVICE_API': str(device).lower(),
-            'DEMO_TIME_ZONE': 'America/Toronto'})
+            'DEMO_TIME_ZONE': 'America/Toronto', **(extra_env or {})})
         for _ in range(100):
             if self.process.poll() is not None:
                 self.log.seek(0)
