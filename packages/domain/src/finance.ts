@@ -64,7 +64,12 @@ export function applyAddendumAction(stored: StoredState, action: AddendumAction,
   }
   let next = structuredClone(stored);
   switch (action.type) {
-    case 'preferences': accountRequired(next); next.finance.preferences = structuredClone(action.input); break;
+    case 'preferences': {
+      const account = accountRequired(next);
+      if (action.input.petName !== undefined) account.petName = action.input.petName;
+      if (action.input.voice !== undefined) next.finance.preferences.voice = action.input.voice;
+      break;
+    }
     case 'budget': {
       accountRequired(next);
       const { month, monthlyLimit, dailyLimit, categoryLimits } = action.input;

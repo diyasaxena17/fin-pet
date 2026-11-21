@@ -18,7 +18,7 @@ with `INVALID_REQUEST`/400. Month query parameters are required.
 
 | Method | Route | Input | Response / canonical FE method |
 | --- | --- | --- | --- |
-| PUT | `/api/preferences` | `{voice: "cute" or "calm"}` | additive state / `updatePreferences` |
+| PUT | `/api/preferences` | `{voice?: "cute" or "calm", petName?: string}` | additive state / `updatePreferences` |
 | GET | `/api/budgets?month=YYYY-MM` | month query | `BudgetSummary` / `getBudgets` |
 | PUT | `/api/budgets` | `{month, monthlyLimit, dailyLimit?, categoryLimits?}` | `BudgetSummary` / `updateBudgets` |
 | GET | `/api/transactions?month=YYYY-MM` | month query | `{transactions: Transaction[]}` / `getTransactions` |
@@ -37,7 +37,17 @@ its original body/response and level-2 gate. Both routes share `lastQuestDate`,
 route switching and restarts cannot earn twice. Level 1 gets
 `QUEST_UNAVAILABLE`/409 through either route. GETs and NFC scans grant nothing.
 
-Preferences default to `cute`; PUT replaces the voice without reward. Budget
+Preferences default to `cute`. PUT accepts `voice`, `petName`, or both, with at
+least one field required. Omitted fields retain their previous value. Voice-only
+clients remain compatible. Name validation matches onboarding: trim surrounding
+whitespace, require 1–200 UTF-16 code units, and reject unknown fields, nulls,
+blank names or unknown voices. Validate the entire body before changing either
+field. Updates return the full initialized state, grant no rewards and emit no
+reaction. The name lives only in account petName / response `pet.name`; state
+`preferences` remains `{voice}`. Internal pet.id, letter, goal, wallet and request
+history remain intact. Repeating the same update is idempotent. Both values
+persist in existing SQLite account fields; no schema bump/reset is required.
+Names and voice preferences are not added to the legacy device projection. Budget
 PUT replaces one month's settings; omitted daily/category limits clear them.
 Limits are positive CAD values with the V1 amount validation; categories are
 `food`, `shopping`, `transport`, `entertainment`, `bills`, `other`. Categories in
