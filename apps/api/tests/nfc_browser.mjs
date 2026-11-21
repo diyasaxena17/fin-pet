@@ -65,7 +65,9 @@ try {
       assert.equal(await readFile(callsFile,'utf8'), 'wag\nsound\n');
     },
   });
-  console.log(JSON.stringify({...result,controllerCalls:['wag_tail','play_happy_sound'],physicalHardware:false},null,2));
+  const addendumTest = runInThisContext(await readFile(join(apiDir,'tests/addendum_flow.playwright.js'),'utf8'), {filename:'addendum_flow.playwright.js'});
+  const addendum = await addendumTest(page, {screenshotDir:join(apiDir,'verification')});
+  console.log(JSON.stringify({...result,addendum,controllerCalls:['wag_tail','play_happy_sound'],physicalHardware:false},null,2));
 } finally {
   if (browser) await browser.close().catch(() => {});
   await Promise.all(processes.reverse().map(async child => {
