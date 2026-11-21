@@ -25,3 +25,15 @@ describe('shared fixture and input schemas', () => {
     expect(onboardingSchema.safeParse({ ...input, device: {} }).success).toBe(false);
   });
 });
+
+// These examples are response-shape fixtures, not a ledger used to compute totals.
+import addendumFixture from '../fixtures/addendum.json';
+import type { BudgetSummary, Transaction, Insight, DailyReport } from './index';
+const examples = addendumFixture as {
+  budget: BudgetSummary; transaction: Transaction; insight: Insight; report: DailyReport;
+};
+it('keeps shared addendum examples explicit about synthetic data and pending check-ins', () => {
+  expect(examples.transaction.source).toBe('demo');
+  expect(examples.report.completedToday).toBe(false);
+  expect(examples.report.insight).not.toContain('completed');
+});

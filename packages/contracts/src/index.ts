@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import fixture from '../fixtures/app-state.json';
 
-/** CAD on the wire, integer cents in the domain and persistence layers. */
-export const moneySchema = z.number().finite().min(0.01).max(1_000_000_000)
-  .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001, 'Use at most two decimal places');
+import { moneySchema } from './money';
+export { moneySchema } from './money';
 const text = z.string().trim().min(1).max(200);
 export const letterSchema = z.strictObject({
   vision: z.string().max(4000), why: z.string().max(4000), reminder: z.string().max(4000),
@@ -49,7 +48,7 @@ export interface InitializedAppState {
 }
 export type AppState = { initialized: false } | InitializedAppState;
 export interface HealthResponse { ok: true }
-export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'NOT_INITIALIZED' | 'ALREADY_INITIALIZED' | 'INSUFFICIENT_COINS' | 'QUEST_UNAVAILABLE' | 'LIMIT_EXCEEDED' | 'INTERNAL_ERROR';
+export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'NOT_INITIALIZED' | 'ALREADY_INITIALIZED' | 'INSUFFICIENT_COINS' | 'QUEST_UNAVAILABLE' | 'LIMIT_EXCEEDED' | 'INTERNAL_ERROR' | 'REQUEST_ID_CONFLICT' | 'REFLECTION_EXISTS' | 'REFLECTION_NOT_DUE';
 export interface ApiErrorResponse { error: { code: ApiErrorCode; message: string } }
 
 export interface MochiApi {
@@ -81,3 +80,5 @@ export const appStateFixture: DeepReadonly<InitializedAppState> = deepFreeze(che
 export function createAppState(): InitializedAppState {
   return structuredClone(appStateFixture) as InitializedAppState;
 }
+
+export * from './addendum';

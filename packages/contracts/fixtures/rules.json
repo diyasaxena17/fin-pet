@@ -1,0 +1,62 @@
+{
+  "treeStages": [
+    {
+      "stage": "seedling",
+      "minimumPercent": 0
+    },
+    {
+      "stage": "sapling",
+      "minimumPercent": 25
+    },
+    {
+      "stage": "young",
+      "minimumPercent": 50
+    },
+    {
+      "stage": "mature",
+      "minimumPercent": 75
+    },
+    {
+      "stage": "thriving",
+      "minimumPercent": 100
+    }
+  ],
+  "lessons": [
+    {
+      "id": "potential-vs-confirmed",
+      "title": "Small steps, real savings",
+      "body": "Skipping a purchase creates an opportunity to save. Recording money actually set aside adds confirmed savings.",
+      "question": "Which action adds confirmed savings?",
+      "options": [
+        {
+          "id": "skip",
+          "label": "Skip a purchase"
+        },
+        {
+          "id": "save",
+          "label": "Record money actually set aside"
+        }
+      ],
+      "correctOptionId": "save",
+      "feedback": "Confirmed savings track money you report actually setting aside; skipped purchases stay potential savings."
+    },
+    {
+      "id": "budget-target",
+      "title": "Your spending target",
+      "body": "A budget is a target you choose. Without a configured limit, spending cannot be described as under budget.",
+      "question": "What is needed to say spending is within a daily target?",
+      "options": [
+        {
+          "id": "limit",
+          "label": "A configured daily limit and recorded spending"
+        },
+        {
+          "id": "nothing",
+          "label": "No spending target"
+        }
+      ],
+      "correctOptionId": "limit",
+      "feedback": "Compare recorded spending with a configured daily limit; an absent limit is not zero."
+    }
+  ]
+}
