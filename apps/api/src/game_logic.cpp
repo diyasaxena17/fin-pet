@@ -1,4 +1,7 @@
 #include "game_logic.hpp"
+#include "finance.hpp"
+#include "engagement.hpp"
+#include "learning.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -145,6 +148,35 @@ Json validate_input(Action action, Json input) {
       if (input.contains("confirmedSaved")) money_cents(input.at("confirmedSaved"), true);
       break;
     case Action::reset: fields(input, {}); break;
+    case Action::check_in: fields(input, {"requestId"}); uuid(input.at("requestId")); break;
+    case Action::lesson:
+      fields(input, {"requestId", "lessonId", "selectedOptionId"}); uuid(input.at("requestId"));
+      if (text(input.at("lessonId"), 200, false).empty() || text(input.at("selectedOptionId"), 200, false).empty()) invalid();
+      break;
+    case Action::reflection:
+      fields(input, {"requestId", "transactionId", "verdict"}); uuid(input.at("requestId"));
+      if (text(input.at("transactionId"), 200, false).empty()) invalid();
+      if (input.at("verdict") != "worth_it" && input.at("verdict") != "unsure" && input.at("verdict") != "not_worth_it") invalid();
+      break;
+    case Action::preferences:
+      fields(input, {"voice"}); if (input.at("voice") != "cute" && input.at("voice") != "calm") invalid(); break;
+    case Action::budget:
+      fields(input, {"month", "monthlyLimit"}, {"dailyLimit", "categoryLimits"});
+      if (!input.at("month").is_string()) invalid();
+      validate_month(input.at("month").get<std::string>()); money_cents(input.at("monthlyLimit"));
+      if (input.contains("dailyLimit")) money_cents(input.at("dailyLimit"));
+      if (input.contains("categoryLimits")) {
+        if (!input.at("categoryLimits").is_object()) invalid();
+        for (const auto& [key, limit] : input.at("categoryLimits").items()) { if (!is_category(key)) invalid(); money_cents(limit); }
+      }
+      break;
+    case Action::transaction:
+      fields(input, {"requestId", "name", "amount", "category", "occurredAt"}, {"planned"});
+      uuid(input.at("requestId")); input["name"] = text(input.at("name"), 200, true);
+      money_cents(input.at("amount")); if (!is_category(input.at("category"))) invalid();
+      timestamp_millis(input.at("occurredAt"));
+      if (input.contains("planned") && !input.at("planned").is_boolean()) invalid();
+      break;
     case Action::gesture:
       fields(input, {"gesture"}); if (input.at("gesture") != "open_palm") invalid(); break;
   }
@@ -171,11 +203,12 @@ std::string previous_day(const std::string& day) {
   return result.str();
 }
 Json empty_state() {
-  return {{"version", 1}, {"account", nullptr}, {"reactionSeq", 0}, {"reactionType", nullptr}, {"lastGestureAt", 0}};
+  return {{"version", 1}, {"finance", empty_finance()}, {"account", nullptr}, {"reactionSeq", 0}, {"reactionType", nullptr}, {"lastGestureAt", 0}};
 }
 void validate_stored_state(const Json& state) {
   try {
-    fields(state, {"version", "account", "reactionSeq", "reactionType", "lastGestureAt"});
+    fields(state, {"version", "account", "reactionSeq", "reactionType", "lastGestureAt"}, {"finance"});
+    if (state.contains("finance")) validate_finance_state(state.at("finance"));
     if (state.at("version") != 1) invalid();
     integer(state.at("reactionSeq")); integer(state.at("lastGestureAt"));
     const auto& reaction = state.at("reactionType");
@@ -206,7 +239,7 @@ Json app_state(const Json& state, const std::string& day) {
   const auto saved = a.at("savedCents").get<std::int64_t>(), target = a.at("targetCents").get<std::int64_t>();
   auto original_letter = a.at("letter");
   original_letter["revealedSections"] = (saved * 4 >= target ? 1 : 0) + (saved * 2 >= target ? 1 : 0) + (saved >= target ? 1 : 0);
-  return {
+  return additive_state(Json{
     {"initialized", true},
     {"pet", {{"id", "mochi-01"}, {"name", a.at("petName")}, {"hunger", a.at("hunger")}, {"mood", a.at("mood")}}},
     {"wallet", {{"coins", a.at("coins")}, {"xp", a.at("xp")}, {"level", level}, {"nextLevelXp", level == 3 ? Json(nullptr) : Json(level == 2 ? 250 : 100)}}},
@@ -217,7 +250,7 @@ Json app_state(const Json& state, const std::string& day) {
     {"quest", {{"id", "daily-check-in"}, {"available", level >= 2 && !completed}, {"completedToday", completed},
       {"streakDays", completed || a.at("lastQuestDate") == previous_day(today) ? a.at("streakDays") : Json(0)}}},
     {"demoSeeded", a.at("demoSeeded")}
-  };
+  }, state, today);
 }
 void emit_reaction(Json& state, const std::string& type) {
   add(state["reactionSeq"], 1); state["reactionType"] = type;
@@ -244,6 +277,10 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
   if (a.is_null()) throw ApiError(404, "NOT_INITIALIZED", "Set up Mochi before using this action.");
   const int before_level = level_for(a.at("xp").get<std::int64_t>());
   switch (action) {
+    case Action::lesson: apply_lesson(state, input); break;
+    case Action::reflection: apply_reflection(state, input, current_millis()); break;
+    case Action::preferences: case Action::budget: case Action::transaction:
+      apply_finance_action(state, action, input, current_millis()); break;
     case Action::letter: a["letter"] = input.at("letter"); break;
     case Action::decision:
       if (input.at("decision") == "skip") {
@@ -259,7 +296,7 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
       a["coins"] = a.at("coins").get<std::int64_t>() - 20;
       a["hunger"] = std::min(100, a.at("hunger").get<int>() + 30);
       a["mood"] = "happy"; emit_reaction(state, "feed"); break;
-    case Action::quest:
+    case Action::quest: case Action::check_in:
       if (before_level < 2) throw ApiError(409, "QUEST_UNAVAILABLE", "Daily check-ins unlock at level 2.");
       if (a.at("lastQuestDate") != day) {
         if (a.at("lastQuestDate") == previous_day(day)) add(a["streakDays"], 1);

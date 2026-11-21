@@ -1,9 +1,26 @@
-# Phone → NFC → backend → Raspberry Pi demo
+# Daily NFC check-in and optional Raspberry Pi feeding demo
 
-This procedure uses the existing C++ backend and React UI. It changes neither
-AppState nor the frozen request/response contract. The demo launcher explicitly
+This procedure uses the C++ backend and React UI with the shared additive
+contract. The demo launcher explicitly
 enables the existing opt-in device API. The hardware controller itself is deferred
 until the hardware owner supplies it; no GPIO pins or servo implementation are assumed.
+
+## Primary NFC workflow: daily report
+
+Program the tag or QR with `http://<LAPTOP_LAN_IP>:5173/check-in`, which the launcher
+now prints. Opening, scanning, reloading or refreshing this page only reads
+`GET /api/reports/today`; none grants acorns, XP or a reaction. At level 2, the
+user may explicitly choose **Complete check-in · +10 acorns**. This posts
+`/api/check-ins` and shares one daily reward with the legacy quest route, even
+across IDs, route switching and backend restarts. Without a daily limit the page
+shows that no target is configured rather than claiming the user is under budget.
+
+In-app feeding remains under **Feed** or `/tap?petId=mochi-01`. The legacy feeding
+rehearsal below is optional and is still the supported Pi wag demo. A check-in
+will not produce a new `daily_checkin` reaction: that name and `goal_milestone`
+are reserved until the hardware owner agrees. Do not expect a wag from opening
+or confirming the daily report. Actual tag programming and phone scans remain
+external checks.
 
 ## 1. Laptop setup
 
@@ -46,7 +63,7 @@ Mochi LAN demo: 0.0.0.0:3000 (ENABLE_DEVICE_API=true, DEMO_MODE=true)
 Health: http://192.168.1.23:3000/health
 Pi state: http://192.168.1.23:3000/api/device/state
 Phone app: http://192.168.1.23:5173/
-NFC / QR: http://192.168.1.23:5173/tap?petId=mochi-01
+NFC / QR: http://192.168.1.23:5173/check-in
 ```
 
 `LAN_IP=192.168.1.23 apps/api/scripts/start-demo.sh` overrides IP detection when
@@ -202,26 +219,26 @@ a later gesture/level event can supersede a feed. Keep the poller connected befo
 confirming, and do not trigger other reaction actions simultaneously during the
 rehearsal. A replaced database with a decreased sequence takes a new baseline.
 
-## 4. Live demo, in order
+## 4. Optional legacy feed/Pi rehearsal, in order
 
 1. Start backend and frontend. Open the phone app. For a fresh rehearsal, use a
    separate database path. If intentionally restarting the existing demo, use
    the UI's confirmed reset and onboard again; the launcher never resets for you.
 2. Onboard with pet Mochi, a $200 goal, and three original letter parts. Confirm
-   the dashboard shows 0 coins, 0 XP, $0 confirmed savings and fullness 50.
+   the dashboard shows 0 acorns, 0 XP, $0 confirmed savings and fullness 50.
 3. Start the Pi poller and **wait for `Initial baseline: N; no animation`**.
    If it started before onboarding, its initial 404s are retried automatically.
-4. Skip a $60 hoodie. Expect 60 coins, 20 XP, $60 potential savings, $0 confirmed.
+4. Skip a $60 hoodie. Expect 60 acorns, 20 XP, $60 potential savings, $0 confirmed.
 5. Record $50 actually saved. Expect 50 XP total, 25% goal progress, and the
    first original letter section revealed. Fullness remains 50.
 6. Write an NFC **URL record** containing the exact printed frontend URL, e.g.
    `http://192.168.1.23:5173/tap?petId=mochi-01`. Put the same URL in a QR fallback.
    Tag programming and real scanning require the phone/tag; neither is simulated
    by a backend request.
-7. Scan with the phone. The confirmation page should show **60 coins** and
-   **50/100 fullness**. Wait, refresh, or return to the dashboard: no coins should
+7. Scan with the phone. The confirmation page should show **60 acorns** and
+   **50/100 fullness**. Wait, refresh, or return to the dashboard: no acorns should
    be spent and the Pi should not wag. Open the NFC URL again.
-8. Tap **Confirm feed · 20 coins** once. Expect **40 coins, 50 XP, fullness 80,
+8. Tap **Confirm feed · 20 acorns** once. Expect **40 acorns, 50 XP, fullness 80,
    happy pet**, and the meal success message. Device sequence increases from N
    to N+1 with `reactionType:"feed"`. A fresh database has N=0, then sequence 1.
    The physical controller should wag once and optionally play its happy sound.
@@ -252,7 +269,7 @@ The optional **real browser integration test** starts/stops isolated servers on
 3000/5173 and creates/removes a temporary database/controller. Stop other demo
 servers first; occupied ports cause failure before any existing account is used.
 It loads the unchanged React app at 390 × 844, opens/refreshes/cancels the NFC URL,
-asserts zero feed POSTs and unchanged coins, explicitly confirms once, then
+asserts zero feed POSTs and unchanged acorns, explicitly confirms once, then
 asserts one feed POST, one wag/sound call, and unchanged state on UUID replay.
 It tests URL navigation, not a physical NFC reader.
 
@@ -272,7 +289,10 @@ installation can live outside the repo, e.g. `/tmp/mochi-browser-tools`; point t
 variable at that installation's `node_modules/playwright/index.mjs`.
 
 The pure page test is `tests/nfc_flow.playwright.js`; it can also be executed by
-an existing Playwright page harness. The standalone runner automatically cleans
+an existing Playwright page harness. The runner additionally exercises
+`addendum_flow.playwright.js`: read-only NFC report open/reload/refresh, explicit
+check-in, all typed addendum adapter methods, and desktop/mobile layout checks.
+The standalone runner automatically cleans
 up its processes and temporary data on success or failure. See
 [verification/hardware-results.md](verification/hardware-results.md) for actual
 software checks and the remaining physical checks.
@@ -291,8 +311,8 @@ software checks and the remaining physical checks.
 | Another poller holds the lock | Stop the earlier process. Do not work around it with another user/lock path for the same hardware. |
 | Network failure / reconnect messages | Restore Wi-Fi/backend at the same IP and DB. The poller reconnects without restarting or clearing its sequence. |
 | Feed succeeded but no wag | Check baseline appeared before feed, controller mode, driver error logs, and no later event superseded the feed. Repeated identical state is intentionally ignored. |
-| Wag/sound failed | Fix/test the hardware controller first. That sequence is consumed and is not automatically replayed. A new feed needs a new confirmation and sufficient coins. |
-| No feed button available | Earn at least 20 coins; check phone URL uses `petId=mochi-01`. |
+| Wag/sound failed | Fix/test the hardware controller first. That sequence is consumed and is not automatically replayed. A new feed needs a new confirmation and sufficient acorns. |
+| No feed button available | Earn at least 20 acorns; check phone URL uses `petId=mochi-01`. |
 | Tag/QR opens wrong device or address | Reprogram it with the current laptop IP, frontend port 5173 and `/tap?petId=mochi-01`. |
 | Backend restart lost progress | Use the same `DB_PATH` and restart from the launcher; do not replace/delete the SQLite file or sidecars. |
 | Backend refuses corrupt/incompatible DB | Preserve the file for diagnosis; use a separate fresh rehearsal DB rather than overwriting it. |

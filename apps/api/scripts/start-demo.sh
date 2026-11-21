@@ -68,7 +68,7 @@ printf '%s\n' \
   "Health: http://$lan_ip:$PORT/health" \
   "Pi state: http://$lan_ip:$PORT/api/device/state" \
   "Phone app: http://$lan_ip:5173/" \
-  "NFC / QR: http://$lan_ip:5173/tap?petId=mochi-01" \
+  "NFC / QR: http://$lan_ip:5173/check-in" \
   'Start the frontend separately: VITE_USE_MOCK=false pnpm dev:web' \
   'Stop with Ctrl-C. No progress is reset by this script.'
 if [ "$API_HOST" = '127.0.0.1' ] || [ "$API_HOST" = 'localhost' ]; then

@@ -1,5 +1,6 @@
 #include "database.hpp"
 #include "game_logic.hpp"
+#include "engagement.hpp"
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -148,11 +149,30 @@ void feeding_and_quests() {
   apply_action(stored, Action::gesture, {{"gesture", "open_palm"}}, today, 103);
   check(stored["reactionSeq"] == seq.get<int>() + 1 && stored["reactionType"] == "greeting", "Greeting after cooldown");
 }
+void reflection_boundary() {
+  auto state = empty_state(); apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  auto transaction = validate_input(Action::transaction, {{"requestId", id(101)}, {"name", "Book"}, {"amount", .29},
+    {"category", "other"}, {"occurredAt", "2026-11-20T12:00:00Z"}});
+  apply_finance_action(state, Action::transaction, transaction, timestamp_millis("2026-11-21T12:00:00Z"));
+  const Json reflection = {{"requestId", id(102)}, {"transactionId", "txn-" + id(101)}, {"verdict", "worth_it"}};
+  const auto boundary = timestamp_millis("2026-11-21T12:00:00Z");
+  check(due_reflections(state, boundary - 1).empty(), "Before reflection boundary");
+  check(due_reflections(state, boundary).size() == 1, "Exact reflection boundary");
+  error([&] { apply_reflection(state, reflection, boundary - 1); }, "REFLECTION_NOT_DUE");
+  apply_reflection(state, reflection, boundary);
+  check(due_reflections(state, boundary).empty() && state["account"]["xp"] == 0, "Reflection grants no reward");
+  check(timestamp_millis("2026-11-01T01:00:00+14:00") == timestamp_millis("2026-10-31T11:00:00Z"), "Offset instant");
+  for (const auto& [saved, stage] : std::vector<std::pair<double, std::string>>{{49.99, "seedling"}, {50, "sapling"}, {100, "young"}, {150, "mature"}, {200, "thriving"}}) {
+    apply_action(state, Action::seed, {{"confirmedSaved", saved}}, today);
+    check(app_state(state, today)["forest"]["treeStage"] == stage, "Shared tree boundary");
+  }
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

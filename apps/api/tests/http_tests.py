@@ -1,4 +1,5 @@
 """Real HTTP/process restart tests. Python stdlib only; never use real user data."""
+from datetime import datetime, timedelta, timezone
 import concurrent.futures
 import json
 import os
@@ -91,7 +92,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('GET', '/api/state'), {'initialized': False})
         api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50}, 404)
         state = api('POST', '/api/onboarding', ONBOARD)
-        self.assertEqual(set(state), {'initialized', 'pet', 'wallet', 'goal', 'letter', 'unlockedFeatures', 'quest', 'demoSeeded'})
+        self.assertEqual(set(state), {'initialized', 'pet', 'wallet', 'goal', 'letter', 'unlockedFeatures', 'quest', 'demoSeeded', 'forest', 'preferences', 'budgetSummary', 'today'})
         api('POST', '/api/onboarding', ONBOARD, 409)
         decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
@@ -116,6 +117,219 @@ class HttpTests(unittest.TestCase):
             decision_row = json.loads(db.execute('SELECT payload FROM decisions').fetchone()[0])
             self.assertEqual(decision_row['amountCents'], 6000)
             self.assertNotIn('amount', decision_row)
+
+    def test_v1_migration_preserves_letter_ids_decisions_and_reactions(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
+        api('POST', '/api/decisions', decision)
+        api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        before = api('POST', '/api/feed', feed)
+        device = api('GET', '/api/device/state')
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            del stored['finance']  # Exact original v1 storage keys.
+            db.execute('UPDATE app_state SET payload=?', (json.dumps(stored),))
+            db.execute('PRAGMA user_version=1')
+            history = db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall()
+            decisions = db.execute('SELECT * FROM decisions').fetchall()
+        self.server = Server(self.db, device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(api('POST', '/api/feed', feed), before)
+        self.assertEqual(api('POST', '/api/decisions', decision), before)
+        self.assertEqual(api('GET', '/api/state')['letter']['vision'], ONBOARD['letter']['vision'])
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+            self.assertEqual(db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall(), history)
+            self.assertEqual(db.execute('SELECT * FROM decisions').fetchall(), decisions)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('GET', '/api/state'), before)
+
+    def test_preferences_budgets_transactions_and_retry_conflicts(self):
+        api = self.server.call
+        api('PUT', '/api/preferences', {'voice': 'calm'}, 404)
+        before = api('POST', '/api/onboarding', ONBOARD)
+        self.assertIsNone(before['budgetSummary']['monthlyLimit'])
+        preferences = api('PUT', '/api/preferences', {'voice': 'calm'})
+        self.assertEqual(preferences['preferences'], {'voice': 'calm'})
+        api('PUT', '/api/preferences', {'voice': 'loud'}, 400)
+        budget = api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 10, 'dailyLimit': 25, 'categoryLimits': {'food': 5}})
+        self.assertEqual(budget['spentThisMonth'], 0)
+        transaction = {'requestId': request_id(), 'name': '  Takeout  ', 'amount': 18.29,
+                       'category': 'food', 'occurredAt': '2026-11-19T19:30:00-05:00'}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(lambda _: api('POST', '/api/transactions', transaction), range(5)))
+        self.assertTrue(all(result == results[0] for result in results))
+        result = results[0]
+        self.assertEqual(result['transaction']['source'], 'manual')
+        self.assertFalse(result['transaction']['planned'])
+        self.assertEqual(result['transaction']['name'], 'Takeout')
+        self.assertEqual(result['budget']['remainingThisMonth'], -8.29)
+        state = api('GET', '/api/state')
+        self.assertEqual(state['goal'], before['goal'])
+        self.assertEqual(state['letter'], before['letter'])
+        self.assertEqual(state['wallet'], before['wallet'])
+        api('POST', '/api/transactions', {**transaction, 'amount': 1}, 409)
+        conflict = api('POST', '/api/savings', {'requestId': transaction['requestId'], 'amount': 1}, 409)
+        self.assertEqual(conflict['error']['code'], 'REQUEST_ID_CONFLICT')
+        offset = {**transaction, 'requestId': request_id(), 'amount': .29, 'occurredAt': '2026-11-01T01:00:00+14:00'}
+        result = api('POST', '/api/transactions', offset)
+        self.assertEqual(result['budget']['month'], '2026-10')
+        self.assertEqual(api('GET', '/api/budgets?month=2026-10')['spentThisMonth'], .29)
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+        for query in ['', '?month=2026-13', '?month=2026-11&month=2026-10', '?month=2026-11&extra=1']:
+            api('GET', '/api/budgets' + query, status=400)
+        for changed in [{'amount': .001}, {'source': 'bank-connected'}, {'occurredAt': '2026-02-30T12:00:00Z'},
+                        {'occurredAt': '2099-01-01T00:00:00Z'}, {'category': 'unknown'}, {'planned': 'false'}]:
+            api('POST', '/api/transactions', {**transaction, 'requestId': request_id(), **changed}, 400)
+        api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 0}, 400)
+        cleared = api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 500})
+        self.assertIsNone(cleared['dailyLimit'])
+        self.assertTrue(all(category['limit'] is None for category in cleared['categories']))
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            self.assertEqual(stored['finance']['transactions'][0]['amountCents'], 1829)
+            self.assertNotIn('amount', stored['finance']['transactions'][0])
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state')['preferences'], {'voice': 'calm'})
+        self.assertEqual(api('POST', '/api/transactions', transaction)['transaction'], results[0]['transaction'])
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
+    def test_insights_and_reflections_are_observed_reward_free_and_persistent(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/insights', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        self.assertEqual(api('GET', '/api/insights'), {'insights': []})
+        old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(timespec='milliseconds')
+        rows = []
+        for _ in range(3):
+            rows.append(api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Takeout', 'amount': 18,
+                            'category': 'food', 'occurredAt': old})['transaction'])
+        recent = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Book', 'amount': 1,
+                     'category': 'other', 'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})['transaction']
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        insight = api('GET', '/api/insights')['insights'][0]
+        self.assertEqual(insight['evidence'], {'count': 3, 'windowDays': 7, 'totalAmount': 54})
+        self.assertEqual(insight['source'], 'manual')
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 3)
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        reflection = {'requestId': request_id(), 'transactionId': recent['id'], 'verdict': 'unsure'}
+        failure = api('POST', '/api/reflections', reflection, 409)
+        self.assertEqual(failure['error']['code'], 'REFLECTION_NOT_DUE')
+        reflection['transactionId'] = rows[0]['id']  # Failed ID was not consumed.
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_reflection BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        api('POST', '/api/reflections', reflection, 500)
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 3)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_reflection')
+        result = api('POST', '/api/reflections', reflection)
+        self.assertEqual(result['state'], before)
+        self.assertEqual(result['transaction']['reflection']['verdict'], 'unsure')
+        self.assertEqual(api('POST', '/api/reflections', reflection), result)
+        self.assertEqual(api('POST', '/api/reflections', {**reflection, 'requestId': request_id()}), result)
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 2)
+        api('POST', '/api/reflections', {**reflection, 'requestId': request_id(), 'verdict': 'worth_it'}, 409)
+        api('POST', '/api/reflections', {**reflection, 'requestId': request_id(), 'transactionId': 'missing'}, 404)
+        api('GET', '/api/insights?extra=1', status=400)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
+        self.assertEqual(self.server.call('GET', '/api/device/state'), device)
+
+    def test_lessons_reward_once_validate_options_and_rollback_reactions(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/lessons', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        lesson = api('GET', '/api/lessons')['lessons'][0]
+        self.assertNotIn('correctOptionId', lesson)
+        self.assertNotIn('feedback', lesson)
+        answer = {'requestId': request_id(), 'lessonId': lesson['id'], 'selectedOptionId': 'skip'}
+        wrong = api('POST', '/api/lessons/answer', answer)
+        self.assertFalse(wrong['correct'])
+        self.assertEqual(wrong['reward'], {'coins': 0, 'xp': 0})
+        api('POST', '/api/lessons/answer', {**answer, 'selectedOptionId': 'save'}, 409)
+        answer = {**answer, 'requestId': request_id(), 'selectedOptionId': 'missing'}
+        api('POST', '/api/lessons/answer', answer, 400)
+        answer['selectedOptionId'] = 'save'
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            stored['account']['xp'] = 95
+            db.execute('UPDATE app_state SET payload=?', (json.dumps(stored),))
+            db.execute("CREATE TRIGGER fail_lesson BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        api('POST', '/api/lessons/answer', answer, 500)
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_lesson')
+        correct = api('POST', '/api/lessons/answer', answer)
+        self.assertTrue(correct['correct'])
+        self.assertEqual(correct['reward'], {'coins': 5, 'xp': 10})
+        self.assertEqual(correct['state']['wallet']['xp'], 105)
+        self.assertEqual(api('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
+        for payload in [answer, {**answer, 'requestId': request_id()}]:
+            self.assertEqual(api('POST', '/api/lessons/answer', payload)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('GET', '/api/lessons')['lessons'][0]['availableReward'], {'coins': 0, 'xp': 0})
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/lessons/answer', answer)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(self.server.call('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
+
+    def test_daily_report_is_read_only_and_check_in_aliases_share_one_reward(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/reports/today', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        report = api('GET', '/api/reports/today')
+        self.assertIsNone(report['dailyLimit'])
+        self.assertIsNone(report['underDailyLimit'])
+        self.assertIsNone(report['achievement'])
+        check_in = {'requestId': request_id()}
+        api('POST', '/api/check-ins', check_in, 409)
+        api('POST', '/api/demo/seed', {'xp': 100})
+        api('PUT', '/api/budgets', {'month': report['date'][:7], 'monthlyLimit': 500, 'dailyLimit': 25})
+        api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Lunch', 'amount': 18, 'category': 'food',
+            'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        for _ in range(3):
+            report = api('GET', '/api/reports/today')
+            self.assertTrue(report['underDailyLimit'])
+            self.assertEqual(report['spentToday'], 18)
+            self.assertEqual(report['availableReward'], {'coins': 10, 'xp': 20})
+            self.assertFalse(report['completedToday'])
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_checkin BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        api('POST', '/api/check-ins', check_in, 500)
+        self.assertFalse(api('GET', '/api/reports/today')['completedToday'])
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_checkin')
+        first = api('POST', '/api/check-ins', check_in)
+        self.assertEqual(first['reward'], {'coins': 10, 'xp': 20})
+        self.assertTrue(first['completedToday'])
+        self.assertTrue(first['state']['today']['checkInCompleted'])
+        self.assertEqual(api('POST', '/api/quests/complete', {**check_in, 'questId': 'daily-check-in'}), first['state'])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            def complete(i):
+                return api('POST', '/api/check-ins', {'requestId': request_id()}) if i % 2 else api('POST', '/api/quests/complete', {'requestId': request_id(), 'questId': 'daily-check-in'})
+            list(pool.map(complete, range(8)))
+        self.assertEqual(api('GET', '/api/state')['wallet'], first['state']['wallet'])
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
 
     def test_validation_is_atomic(self):
         api = self.server.call

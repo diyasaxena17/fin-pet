@@ -1,5 +1,6 @@
 #include "database.hpp"
 #include "game_logic.hpp"
+#include "finance.hpp"
 #include <filesystem>
 #include <memory>
 
@@ -23,6 +24,18 @@ class Statement {
     if (sqlite3_step(stmt) != SQLITE_DONE) throw std::runtime_error("SQLite write failed");
   }
 };
+std::string canonical_endpoint(const std::string& endpoint) {
+  return endpoint == "/api/quests/complete" ? "/api/check-ins" : endpoint;
+}
+bool structured_endpoint(const std::string& endpoint) {
+  const auto& path = endpoint;
+  return path == "/api/check-ins" || path == "/api/transactions" || path == "/api/reflections" || path == "/api/lessons/answer";
+}
+Json canonical_input(const std::string& endpoint, Json input) {
+  if (endpoint == "/api/quests/complete") input.erase("questId");
+  return input;
+}
+
 }
 void Database::exec(const char* sql) {
   if (sqlite3_exec(db_, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
@@ -54,12 +67,21 @@ Database::Database(const std::string& path) {
         exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);"
              "CREATE TABLE processed_requests (request_id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, payload TEXT NOT NULL);"
              "CREATE TABLE decisions (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
-             "PRAGMA user_version=1;");
+             "PRAGMA user_version=2;");
         Statement insert(db_, "INSERT INTO app_state(id,payload) VALUES(1,?)");
         insert.text(1, empty_state().dump()); insert.done();
-      } else if (schema_version != 1) throw std::runtime_error("Incompatible Mochi database schema");
+      } else if (schema_version == 1) {
+        // Preserve the complete original payload, history and UUID tables in-place.
+        auto state = load();
+        if (!state.contains("finance")) state["finance"] = empty_finance();
+        validate_stored_state(state);
+        Statement upgrade(db_, "UPDATE app_state SET payload=? WHERE id=1");
+        upgrade.text(1, state.dump()); upgrade.done();
+        exec("PRAGMA user_version=2");
+      } else if (schema_version != 2) throw std::runtime_error("Incompatible Mochi database schema");
     }
     validate_stored_state(load());
+    if (!load().contains("finance")) throw std::runtime_error("Missing finance state");
     // Prepare all tables now, so an incompatible schema fails before listening.
     Statement ids(db_, "SELECT request_id,endpoint,payload FROM processed_requests LIMIT 0");
     Statement decisions(db_, "SELECT request_id,payload FROM decisions LIMIT 0");
@@ -88,10 +110,17 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
   try {
     auto state = load();
     if (!id.empty()) {
-      Statement query(db_, "SELECT 1 FROM processed_requests WHERE request_id=?");
+      Statement query(db_, "SELECT endpoint,payload FROM processed_requests WHERE request_id=?");
       query.text(1, id);
       const int result = sqlite3_step(query.stmt);
-      if (result == SQLITE_ROW) { exec("COMMIT"); return state; }
+      if (result == SQLITE_ROW) {
+        const std::string previous = reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 0));
+        const auto previous_input = Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 1)));
+        if ((structured_endpoint(endpoint) || structured_endpoint(previous)) &&
+            (canonical_endpoint(endpoint) != canonical_endpoint(previous) || canonical_input(endpoint, input) != canonical_input(previous, previous_input)))
+          throw ApiError(409, "REQUEST_ID_CONFLICT", "This request ID belongs to another operation.");
+        exec("COMMIT"); return state;
+      }
       if (result != SQLITE_DONE) throw std::runtime_error("SQLite request lookup failed");
     }
     apply(state);
