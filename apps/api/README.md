@@ -257,3 +257,13 @@ manual checks, contract decisions, and hardware checks still requiring devices.
 
 Addendum verification, including migration/restart and browser screenshots, is
 recorded in [verification/addendum-results.md](verification/addendum-results.md).
+
+## Squirrel name and voice settings
+
+`PUT /api/preferences` accepts `petName`, `voice`, or both. At least one field is
+required; omitted values stay unchanged. Names use onboarding's trimmed,
+nonempty 200-UTF-16-unit limit; voices are cute/calm. The response keeps the name
+in `pet.name` and voice in `preferences.voice`. Voice-only clients remain valid.
+Both values use existing SQLite account fields and update atomically without a
+schema reset, reward or device reaction. No name is added to device state.
+See [verification and examples](../../docs/PREFERENCES_VERIFICATION.md).
