@@ -331,6 +331,44 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
 
+    def test_name_and_voice_preferences_are_independent_atomic_and_persistent(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('PUT', '/api/preferences', {'petName': 'Clover'}, 404)
+        api('POST', '/api/onboarding', ONBOARD)
+        before = api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        device = api('GET', '/api/device/state')
+        renamed = api('PUT', '/api/preferences', {'petName': '  Clover  '})
+        self.assertEqual(renamed['pet']['name'], 'Clover')
+        self.assertEqual(renamed['preferences'], {'voice': 'cute'})
+        calm = api('PUT', '/api/preferences', {'voice': 'calm'})
+        self.assertEqual(calm['pet']['name'], 'Clover')
+        self.assertEqual(calm['preferences'], {'voice': 'calm'})
+        for field in ['goal', 'wallet', 'letter', 'forest', 'quest', 'today']:
+            self.assertEqual(calm[field], before[field])
+        for body in [{}, {'petName': '   ', 'voice': 'cute'}, {'petName': 'x'*201}, {'petName': '🐿'*101},
+                     {'petName': None}, {'voice': 'loud'}, {'voice': 'cute', 'unknown': 1}]:
+            api('PUT', '/api/preferences', body, 400)
+            self.assertEqual(api('GET', '/api/state'), calm)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_preferences BEFORE UPDATE ON app_state BEGIN SELECT RAISE(FAIL, 'preference failure'); END")
+        update = {'petName': 'Maple', 'voice': 'cute'}
+        api('PUT', '/api/preferences', update, 500)
+        self.assertEqual(api('GET', '/api/state'), calm)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_preferences')
+        saved = api('PUT', '/api/preferences', update)
+        self.assertEqual(api('PUT', '/api/preferences', update), saved)
+        self.assertEqual(saved['pet']['name'], 'Maple')
+        self.assertEqual(saved['preferences'], {'voice': 'cute'})
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('GET', '/api/state'), saved)
+        self.assertEqual(self.server.call('GET', '/api/device/state'), device)
+        legacy = self.server.call('PUT', '/api/preferences', {'voice': 'calm'})
+        self.assertEqual(legacy['pet']['name'], 'Maple')
+        self.assertEqual(legacy['letter'], before['letter'])
+
     def test_validation_is_atomic(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)

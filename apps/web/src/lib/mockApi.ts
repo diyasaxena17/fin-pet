@@ -1,6 +1,6 @@
 import {
   onboardingSchema, letterInputSchema, decisionSchema, savingsSchema,
-  feedSchema, questSchema, demoSeedSchema, preferencesSchema, budgetSchema, transactionSchema,
+  feedSchema, questSchema, demoSeedSchema, preferencesInputSchema, budgetSchema, transactionSchema,
   reflectionSchema, lessonAnswerSchema, checkInSchema, monthSchema, lessonCatalogue, type AddendumMochiApi, type Transaction,
 } from '@mochi/contracts';
 import {
@@ -32,7 +32,7 @@ export function createMockApi(options: { clock?: () => Date; timeZone?: string }
     async completeQuest(input) { return requireAddendumState(dispatch({ type: 'quest', input: questSchema.parse(input) })); },
     async demoSeed(input) { return requireAddendumState(dispatch({ type: 'seed', input: demoSeedSchema.parse(input) })); },
     async demoReset() { return dispatch({ type: 'reset' }); },
-    async updatePreferences(input) { return requireAddendumState(dispatch({ type: 'preferences', input: preferencesSchema.parse(input) })); },
+    async updatePreferences(input) { return requireAddendumState(dispatch({ type: 'preferences', input: preferencesInputSchema.parse(input) })); },
     async getBudgets(month) { return getBudget(stored, monthSchema.parse(month), clock(), options.timeZone); },
     async updateBudgets(input) {
       const parsed = budgetSchema.parse(input); dispatch({ type: 'budget', input: parsed });

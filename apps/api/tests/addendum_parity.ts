@@ -77,6 +77,12 @@ try {
   await mutation('POST', '/api/onboarding', 'onboard', { petName: 'Mochi', goalTitle: 'Fund', goalTarget: 200, letter: { vision: '  Original\n', why: '', reminder: '' } });
   await mutation('PUT', '/api/preferences', 'updatePreferences', { voice: 'calm' });
   await mutation('PUT', '/api/preferences', 'updatePreferences', { voice: 'invalid' });
+  await mutation('PUT', '/api/preferences', 'updatePreferences', { petName: '  Clover  ' });
+  await mutation('PUT', '/api/preferences', 'updatePreferences', { voice: 'cute' });
+  await mutation('PUT', '/api/preferences', 'updatePreferences', { petName: 'Maple', voice: 'calm' });
+  for (const body of [{}, { petName: ' ' }, { petName: 'x'.repeat(201) }, { petName: '🐿'.repeat(101) }, { petName: null }, { petName: 'Clover', unknown: true }])
+    await mutation('PUT', '/api/preferences', 'updatePreferences', body);
+
   await compare('GET', `/api/budgets?month=${month}`, 'getBudgets', [month]);
   await mutation('PUT', '/api/budgets', 'updateBudgets', { month, monthlyLimit: 500, dailyLimit: 25, categoryLimits: { food: 100 } });
   await mutation('PUT', '/api/budgets', 'updateBudgets', { month, monthlyLimit: 0 });
