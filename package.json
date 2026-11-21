@@ -9,7 +9,12 @@
     "dev:web": "pnpm --filter @mochi/web dev",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm check:hooks && pnpm typecheck && pnpm test && pnpm build",
+    "check:hooks": "node --test scripts/tests/commit-message.test.mjs",
+    "check:commits": "node scripts/check-commits.mjs",
+    "setup:hooks": "node scripts/install-hooks.mjs",
+    "prepare": "node scripts/install-hooks.mjs"
   },
   "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.0" }
 }

@@ -1,16 +1,14 @@
-import { createAppState, type AppState, type DeviceStateResponse } from '@mochi/contracts';
+import { applyAction, getAppState, type Action } from '@mochi/domain';
+import type { StateRepository } from '../persistence/repository.js';
 
-export function getState(): AppState {
-  return createAppState();
-}
-
-export function getDeviceState(): DeviceStateResponse {
-  const state = getState();
+export function createStateService(repository: StateRepository, options: { clock?: () => Date; timeZone?: string } = {}) {
+  const clock = options.clock ?? (() => new Date());
   return {
-    schemaVersion: state.schemaVersion,
-    petName: state.profile.petName,
-    level: state.wallet.level,
-    mood: state.pet.mood,
-    reactionSeq: state.pet.reactionSeq,
+    async getState() { return getAppState(await repository.read(), clock(), options.timeZone); },
+    async dispatch(action: Action) {
+      const now = clock();
+      const stored = await repository.transact((state) => applyAction(state, action, now, options.timeZone));
+      return getAppState(stored, now, options.timeZone);
+    },
   };
 }

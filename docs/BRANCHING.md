@@ -8,10 +8,14 @@ The shared scaffold is organized into five focused commits on `chore/repo-setup`
 4. `feat(web): scaffold React pages and typed live and mock adapters`
 5. `chore: add CI and document scaffold handoff`
 
-At handoff, `main`, `feat/web`, and `feat/api` point to the final setup commit.
-Find its SHA with `git rev-parse chore/repo-setup`. Both developers
+Further setup, PRD/check improvements, and the standalone contract implementation
+are committed on `chore/repo-setup`.
+After accepting the full setup branch, advance `main` and base both implementation
+branches on that same accepted tip before feature work begins.
+Find the proposed setup SHA with `git rev-parse chore/repo-setup`. Both developers
 must agree on this exact SHA, Node 22.23.5, and pnpm 10.34.9 before starting.
-The scaffold task creates local `feat/web` and `feat/api` refs at this tip.
+The initial local `feat/web` and `feat/api` refs identify the original scaffold
+tip and must be updated to the accepted setup before implementation.
 Publish `main` through the team's normal Git workflow before another checkout
 tries to pull it; the scaffold task does not push remote changes.
 
@@ -43,6 +47,7 @@ Use `git switch feat/web` or `git switch feat/api` for an existing local branch.
 | `apps/api/**` | Backend |
 | Root `pnpm-lock.yaml` | Backend; coordinate all dependency changes |
 | `packages/contracts/**` | Frozen; focused contract PR to `main` |
+| `packages/domain/**` | Shared API/mock rules; focused contract PR to `main` |
 | Root configuration | Frozen; focused contract PR to `main` |
 | `docs/API_CONTRACT.md` | Frozen; focused contract PR to `main` |
 
@@ -55,5 +60,21 @@ compatibility checks pass. Feature work uses PRs, not direct commits to `main`.
 If a shared contract change is unavoidable, merge its small PR to `main`, notify
 both developers, and rebase both branches before consuming the change.
 
-PR acceptance: typecheck, tests, build, browser/mobile smoke checks, unchanged
-request/response shapes, and the main demo flow when its backend is implemented.
+## Commit and PR gates
+
+- `pnpm install` enables `.githooks`; use `pnpm setup:hooks` for an existing
+  checkout. Pre-commit checks staged whitespace and runs `pnpm check`.
+- Commit subjects use Conventional Commits and stay within 100 characters.
+  The commit-msg hook rejects invalid subjects.
+- `pnpm check` runs validator tests, typecheck, Vitest, and builds. CI runs the
+  same command on every push and pull request, and validates commit subjects.
+- Complete `.github/pull_request_template.md` with the affected application
+  journey and observed browser/mobile results. Include persistence and feeding
+  checks when the change affects those flows; explain checks not run.
+- PR acceptance requires compatible request/response shapes and the main demo
+  flow once implemented. The PRD's full-stack app acceptance criteria define
+  completion across the working application screens and API.
+- Configure GitHub branch protection/rulesets separately to require `CI / quality`
+  and `CI / commit-messages` on `main`. Workflow files and local hooks alone do
+  not prevent a maintainer from merging a PR that fails checks. Remote protection
+  has not been configured by this repository-only change.

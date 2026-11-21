@@ -1,29 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppState } from '@mochi/contracts';
 import { ApiError, httpApi } from './api';
+import { createRequestId } from './requestId';
 
 afterEach(() => vi.unstubAllGlobals());
-
 describe('HTTP adapter contract', () => {
-  it('uses the frozen method, path, and request shape for every operation', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ state: createAppState() }) });
+  it('uses direct state responses and the supplied contract paths', async () => {
+    const fixture = createAppState();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => fixture });
     vi.stubGlobal('fetch', fetchMock);
     await httpApi.getState();
-    await httpApi.onboard({ name: 'D', petName: 'Mochi', goal: { name: 'Trip', targetCents: 20000 }, letter: { sections: ['a', 'b', 'c'] } });
-    await httpApi.updateLetter({ sections: ['a', 'b', 'c'] });
-    await httpApi.submitDecision({ choice: 'skip', amountCents: 6000, item: 'Shoes' });
-    await httpApi.recordSavings({ amountCents: 5000 });
-    await httpApi.feedPet({ source: 'qr' });
-    await httpApi.completeQuest({ questId: 'first-save' });
-    await httpApi.demoSeed({ level: 2 });
+    expect(await httpApi.onboard({ petName: 'Mochi', goalTitle: 'Trip', goalTarget: 200, letter: { vision: 'a', why: 'b', reminder: 'c' } })).toEqual(fixture);
+    await httpApi.updateLetter({ letter: { vision: 'a', why: 'b', reminder: 'c' } });
+    await httpApi.submitDecision({ requestId: createRequestId(), itemName: 'Shoes', amount: 60, decision: 'skip' });
+    const savings = { requestId: createRequestId(), amount: 50 };
+    await httpApi.recordSavings(savings);
+    await httpApi.feedPet({ requestId: createRequestId(), petId: 'mochi-01' });
+    await httpApi.completeQuest({ requestId: createRequestId(), questId: 'daily-check-in' });
+    await httpApi.demoSeed({ xp: 100 });
+    await httpApi.demoReset();
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
-      ['/api/state', 'GET'], ['/api/onboard', 'POST'], ['/api/letter', 'PUT'], ['/api/decisions', 'POST'],
-      ['/api/savings', 'POST'], ['/api/pet/feed', 'POST'], ['/api/quests/complete', 'POST'], ['/api/demo/seed', 'POST'],
+      ['/api/state', 'GET'], ['/api/onboarding', 'POST'], ['/api/letter', 'PUT'], ['/api/decisions', 'POST'],
+      ['/api/savings', 'POST'], ['/api/feed', 'POST'], ['/api/quests/complete', 'POST'], ['/api/demo/seed', 'POST'], ['/api/demo/reset', 'POST'],
     ]);
-    expect(JSON.parse(fetchMock.mock.calls[4]![1].body)).toEqual({ amountCents: 5000 });
+    expect(JSON.parse(fetchMock.mock.calls[4]![1].body)).toEqual(savings);
   });
-  it('surfaces API errors with their status and code', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 501, json: async () => ({ error: { code: 'NOT_IMPLEMENTED', message: 'Reserved' } }) }));
-    await expect(httpApi.getState()).rejects.toMatchObject({ status: 501, code: 'NOT_IMPLEMENTED', message: 'Reserved' } satisfies Partial<ApiError>);
+  it('surfaces API error codes and handles non-JSON errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: { code: 'INSUFFICIENT_COINS', message: 'You need 20 Mochi coins.' } }) }));
+    await expect(httpApi.feedPet({ requestId: createRequestId(), petId: 'mochi-01' })).rejects.toMatchObject({ status: 409, code: 'INSUFFICIENT_COINS' } satisfies Partial<ApiError>);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => { throw new Error('Not JSON'); } }));
+    await expect(httpApi.getState()).rejects.toMatchObject({ status: 502, code: 'HTTP_ERROR' });
   });
 });

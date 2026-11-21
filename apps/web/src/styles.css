@@ -5,4 +5,9 @@
   a { text-decoration: none; }
   a:focus-visible, button:focus-visible { outline: 3px solid #7c3aed; outline-offset: 4px; }
   nav a[aria-current="page"] { color: #7c3aed; }
+  input, textarea, select { display: block; width: 100%; margin-top: 0.35rem; border: 1px solid #cbd5e1; border-radius: 0.65rem; padding: 0.65rem; color: #242037; background: white; }
+  label { display: block; font-weight: 500; }
+  button, .button { display: inline-block; cursor: pointer; border-radius: 0.65rem; padding: 0.65rem 1rem; color: white; background: #6d28d9; font-weight: 600; }
+  button:disabled { opacity: 0.55; cursor: wait; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #7c3aed; outline-offset: 2px; }
 }

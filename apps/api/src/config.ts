@@ -12,6 +12,9 @@ const env = z.object({
   API_HOST: z.string().min(1).default('0.0.0.0'),
   DEMO_MODE: z.enum(['true', 'false']).default('true'),
   DATA_FILE: z.string().min(1).default('./data/state.json'),
+  DEMO_TIME_ZONE: z.string().refine((value) => {
+    try { new Intl.DateTimeFormat('en-CA', { timeZone: value }); return true; } catch { return false; }
+  }, 'Use a valid IANA time zone').default('America/Toronto'),
 }).parse(process.env);
 
 export const apiConfig = {
@@ -19,4 +22,5 @@ export const apiConfig = {
   host: env.API_HOST,
   demoMode: env.DEMO_MODE === 'true',
   dataFile: path.resolve(workspaceRoot, env.DATA_FILE),
+  timeZone: env.DEMO_TIME_ZONE,
 };

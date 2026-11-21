@@ -1,8 +1,11 @@
-# Persistence extension point
+# Local JSON persistence
 
-Implement the JSON state repository here using `apiConfig.dataFile`, resolved
-relative to the workspace root. Create the parent directory, load once at startup,
-serialize writes, and atomically replace via a temporary file. Preserve
-`pet.reactionSeq` across restarts. Do not commit runtime data.
+`repository.ts` uses `apiConfig.dataFile`, resolved relative to the workspace
+root. It validates and loads once at startup, serializes transactions, writes a
+flushed temporary file, and renames it before publishing new in-memory state.
+Account state, integer cents, decisions, quest dates, and successful request IDs
+persist together. Failed writes leave previous state unchanged. Missing files
+start an empty account; corrupt files fail startup and remain untouched.
 
-The scaffold is read-only and does not yet read or write DATA_FILE.
+Use one API process per file; this is a single-user local demo repository, not a
+multi-process database. Do not commit runtime data or use real personal details.
