@@ -192,6 +192,40 @@ reports are projections. Successful IDs still commit with mutations. Structured
 new endpoints reject conflicting ID/payload reuse; legacy-to-legacy replay keeps
 V1 current-state behavior. The original payload's `version:1` remains intact.
 
+### BE-01 schema inspection and migration choice
+
+No additional feature tables or schema version are necessary for this ticket.
+Before and after the upgrade, the tables are:
+
+| Table | Columns and constraints |
+| --- | --- |
+| `app_state` | `id INTEGER PRIMARY KEY CHECK(id=1)`, `payload TEXT NOT NULL` |
+| `processed_requests` | `request_id TEXT PRIMARY KEY`, `endpoint TEXT NOT NULL`, `payload TEXT NOT NULL` |
+| `decisions` | `request_id TEXT PRIMARY KEY`, `payload TEXT NOT NULL` |
+
+The v1→v2 change adds only `finance` to the singleton JSON payload: budgets keyed
+by month, transactions with integer cents and nullable purchase reflections,
+unique completed lesson IDs, and cute/calm voice preferences. Squirrel name and
+local-day check-in cursor/streak already live in the account. Insights and report
+totals remain derived. This is a single local account per database, not a
+multi-user relational schema. Lesson and transaction uniqueness is enforced by
+stored-state validation; same-day check-in rewards are guarded by the account's
+`lastQuestDate`. These are application invariants, not additional SQL constraints;
+there is no historical check-in table to protect against a system clock moving
+back to a previously rewarded day.
+
+Startup creates v1 tables for a new install, then applies the same ordered upgrade
+used for existing databases. `BEGIN IMMEDIATE` covers creation, payload changes,
+`user_version`, current-state validation, and table/primary-key compatibility
+checks. Any failure rolls back before startup can listen. Version 2 startup only
+reads/validates state; it does not rewrite the payload or create duplicate records.
+Missing primary keys now fail startup instead of silently weakening deduplication.
+
+Focused tests in `tests/http_tests.py` upgrade a SQLite backup of a representative
+v1 account, verify preserved records and repeated startup, forbid v2 payload
+rewrites with a trigger, and inject both an update failure and a late schema-check
+failure. Each failure retains the original version, payload, and schema/history.
+
 Corrupt JSON, missing state rows, and incompatible database versions fail startup
 instead of resetting progress. There is no automatic migration from the retired
 Node JSON `DATA_FILE`; use a fresh SQLite path for the C++ demo. Runtime SQLite

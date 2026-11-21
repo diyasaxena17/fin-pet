@@ -21,5 +21,6 @@ class Database {
   std::mutex mutex_;
   void exec(const char* sql);
   Json load(bool allow_v1 = false);
+  void migrate(int version);
 };
 }

@@ -136,6 +136,10 @@ class HttpTests(unittest.TestCase):
             db.execute('PRAGMA user_version=1')
             history = db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall()
             decisions = db.execute('SELECT * FROM decisions').fetchall()
+        copied = self.db.with_name('v1-copy.sqlite3')
+        with sqlite3.connect(self.db) as source, sqlite3.connect(copied) as target:
+            source.backup(target)
+        self.db = copied
         self.server = Server(self.db, device=True)
         api = self.server.call
         self.assertEqual(api('GET', '/api/state'), before)
@@ -149,6 +153,50 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT * FROM decisions').fetchall(), decisions)
         self.restart(device=True)
         self.assertEqual(self.server.call('GET', '/api/state'), before)
+
+    def test_fresh_schema_and_v2_restart_do_not_rewrite_payload(self):
+        self.server.call('POST', '/api/onboarding', ONBOARD)
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+            tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+            self.assertEqual(tables, [('app_state',), ('decisions',), ('processed_requests',)])
+            for table, key in [('app_state', 'id'), ('decisions', 'request_id'), ('processed_requests', 'request_id')]:
+                self.assertEqual([row[1] for row in db.execute(f'PRAGMA table_info({table})') if row[5]], [key])
+            payload = db.execute('SELECT payload FROM app_state').fetchone()[0]
+            db.execute("CREATE TRIGGER no_rewrite BEFORE UPDATE ON app_state BEGIN SELECT RAISE(FAIL, 'unexpected rewrite'); END")
+        for _ in range(2):
+            self.server = Server(self.db)
+            self.server.close()
+            with sqlite3.connect(self.db) as db:
+                self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+
+    def test_v1_copy_late_schema_failure_rolls_back_upgrade(self):
+        self.server.call('POST', '/api/onboarding', ONBOARD)
+        self.server.close()
+        # SQLite backup makes an isolated representative copy; no live DB is edited.
+        copied = self.db.with_name('legacy-copy.sqlite3')
+        with sqlite3.connect(self.db) as source, sqlite3.connect(copied) as db:
+            source.backup(db)
+            legacy = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            del legacy['finance']
+            payload = json.dumps(legacy)
+            db.execute('UPDATE app_state SET payload=?', (payload,))
+            db.execute('PRAGMA user_version=1')
+            # All expected columns exist, but request IDs would no longer be unique.
+            db.execute('ALTER TABLE processed_requests RENAME TO old_requests')
+            db.execute('CREATE TABLE processed_requests (request_id TEXT, endpoint TEXT NOT NULL, payload TEXT NOT NULL)')
+            db.execute('DROP TABLE old_requests')
+            schema = db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall()
+        result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(copied)}, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'primary key', result.stderr)
+        with sqlite3.connect(copied) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+            self.assertEqual(db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall(), schema)
+        # Original DB still starts normally.
+        self.server = Server(self.db)
 
     def test_v1_migration_failure_rolls_back_schema_payload_and_history(self):
         api = self.server.call
