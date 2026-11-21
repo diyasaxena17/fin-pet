@@ -21,6 +21,13 @@ std::size_t seed_forest_demo(Database& db, std::int64_t now_ms) {
   db.mutate("", "/cli/demo/forest", Json::object(), [&](Json& state) {
     if (state.at("account").is_null()) throw ApiError(404, "NOT_INITIALIZED", "Onboard before seeding forest examples.");
     auto& transactions = state["finance"]["transactions"];
+    constexpr std::int64_t lookback_ms = 7LL * 24 * hour_ms;
+    const bool refresh = std::any_of(transactions.begin(), transactions.end(), [&](const Json& t) {
+      if (t.at("source") != "demo" || !t.at("reflection").is_null() ||
+          !t.at("id").get<std::string>().starts_with("txn-demo-forest-")) return false;
+      const auto at = timestamp_millis(t.at("occurredAt"));
+      return at > now_ms || now_ms - at > lookback_ms;
+    });
     const auto insert = [&](const std::string& id, const std::string& name, const std::string& category,
                             std::int64_t amount_cents, std::int64_t occurred_at) {
       auto existing = std::find_if(transactions.begin(), transactions.end(), [&](const Json& t) { return t.at("id") == id; });
@@ -28,6 +35,10 @@ std::size_t seed_forest_demo(Database& db, std::int64_t now_ms) {
         // Never overwrite a user's record, or a review already saved on this demo.
         if (existing->at("source") != "demo" || existing->at("name") != name || existing->at("category") != category || existing->at("amountCents") != amount_cents)
           throw ApiError(409, "REQUEST_ID_CONFLICT", "A forest demo transaction ID is already in use.");
+        // Re-anchor unreviewed examples together only when the demo clock has
+        // moved outside the insight lookback. Reviewed purchase dates stay intact.
+        if (refresh && existing->at("reflection").is_null())
+          (*existing)["occurredAt"] = utc_timestamp(occurred_at);
         return;
       }
       transactions.push_back({{"id", id}, {"name", name}, {"amountCents", amount_cents}, {"category", category},

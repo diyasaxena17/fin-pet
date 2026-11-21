@@ -2,6 +2,7 @@
 #include "game_logic.hpp"
 #include "engagement.hpp"
 #include "learning.hpp"
+#include "demo.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -361,11 +362,65 @@ void daily_report_calendar() {
   check(report_at("2026-03-09T04:00:00Z")["spentToday"] == 4, "DST midnight excludes previous local day");
 }
 
+
+void demo_clock_reproducibility() {
+  Database db(":memory:");
+  run(db, Action::onboard, onboarding);
+  const auto start = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto later = start + 8LL * 86400000;
+  auto manual = validate_input(Action::transaction, {{"requestId", id(301)}, {"name", "Manual book"},
+    {"amount", 9.29}, {"category", "shopping"}, {"occurredAt", "2026-11-20T12:00:00Z"}});
+  db.mutate(id(301), "/api/transactions", manual, [&](Json& state) {
+    apply_finance_action(state, Action::transaction, manual, start);
+  });
+  const auto initial = db.read();
+  check(seed_forest_demo(db, start) == 6, "Fresh demo creates six examples");
+  const auto fresh = db.read();
+  check(fresh["account"]["coins"] == initial["account"]["coins"] && fresh["account"]["xp"] == initial["account"]["xp"],
+        "Demo creates no reward");
+  const auto insights = spending_insights(fresh, start);
+  check(insights.size() == 2 && due_reflections(fresh, start).size() == 3, "Fresh demo shows both patterns and overdue reviews");
+  check(seed_forest_demo(db, start) == 0 && db.read() == fresh, "Same-clock reseed is byte-equivalent state");
+  check(seed_forest_demo(db, start + 1000) == 0 && db.read() == fresh, "Nearby clock does not drift timestamps");
+  check(spending_insights(fresh, later).empty(), "Fixture demonstrates stale examples after eight days");
+  check(seed_forest_demo(db, later) == 0, "Refreshing adds no rows");
+  const auto refreshed = db.read();
+  check(refreshed["finance"]["transactions"].size() == 7 && refreshed["finance"]["transactions"][0] == initial["finance"]["transactions"][0],
+        "Refresh preserves manual transaction and row count");
+  check(spending_insights(refreshed, later) == insights, "Refresh restores identical insight IDs and evidence");
+  check(seed_forest_demo(db, later) == 0 && db.read() == refreshed, "Refreshed seed is idempotent");
+  check(refreshed["account"] == fresh["account"] && refreshed["reactionSeq"] == fresh["reactionSeq"],
+        "Refresh preserves progress and reactions");
+  bool replay_applied = false;
+  db.mutate(id(301), "/api/transactions", manual, [&](Json&) { replay_applied = true; });
+  check(!replay_applied, "Refresh retains successful manual request IDs");
+  check(seed_forest_demo(db, start) == 0 && spending_insights(db.read(), start) == insights,
+        "Moving the controlled demo clock back re-anchors future examples without duplicates");
+  check(seed_forest_demo(db, later) == 0 && db.read() == refreshed, "Returning to later clock is reproducible");
+  // Preserve the user's saved review and its purchase time even across clock refresh.
+  const auto due = due_reflections(refreshed, later);
+  const auto demo_due = std::find_if(due.begin(), due.end(), [](const Json& t) { return t.at("source") == "demo"; });
+  check(demo_due != due.end(), "Refreshed demo has an overdue synthetic purchase");
+  const Json review = {{"requestId", id(302)}, {"transactionId", demo_due->at("id")}, {"verdict", "unsure"}};
+  db.mutate(id(302), "/api/reflections", review, [&](Json& state) { apply_reflection(state, review, later); });
+  const auto reviewed = db.read()["finance"]["transactions"][1];
+  seed_forest_demo(db, later + 8LL * 86400000);
+  check(db.read()["finance"]["transactions"][1] == reviewed, "Saved judgement and purchase time are not rewritten");
+
+  Database collision(":memory:"); run(collision, Action::onboard, onboarding);
+  auto conflicting = initial["finance"]["transactions"][0];
+  conflicting["id"] = "txn-demo-forest-cluster-3";
+  collision.mutate("", "/test", Json::object(), [&](Json& state) { state["finance"]["transactions"].push_back(conflicting); });
+  const auto before = collision.read();
+  error([&] { seed_forest_demo(collision, start); }, "REQUEST_ID_CONFLICT");
+  check(collision.read() == before, "Late demo-ID collision rolls back all earlier inserts");
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance(); daily_report_calendar();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance(); daily_report_calendar(); demo_clock_reproducibility();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

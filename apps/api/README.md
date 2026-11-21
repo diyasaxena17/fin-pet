@@ -393,6 +393,41 @@ the backend therefore keeps voice out of that payload. Device gating and private
 financial-data exclusion remain unchanged. Voice transport/playback needs a
 coordinated hardware update.
 
+## Reproducible synthetic demo activity (BE-09)
+
+Use the existing explicit demo flow after onboarding a throwaway account:
+
+```sh
+DEMO_MODE=true DB_PATH=/absolute/path/to/demo.sqlite3 apps/api/build/mochi-api --seed-forest-demo
+```
+
+This existing native command requires both `DEMO_MODE=true` and explicit DB_PATH.
+No new HTTP route or frozen seed-body field is introduced. The existing
+`POST /api/demo/seed` and `/api/demo/reset` remain 404 with demo mode disabled.
+The HTTP seed still controls only the agreed XP/coin/savings fields; synthetic
+activity uses the existing native command as described in FOREST_DEMO.md.
+
+Six stable-ID records have `source:"demo"`: three $18 Takeout purchases aged
+70–72 hours and three discretionary purchases totaling $35 within one hour.
+They show both insight cards and three eligible 48-hour reviews without earning
+rewards or adding goal savings. Manual records retain their source; no bank
+connection is claimed. Native tests inject a fixed millisecond clock; normal CLI
+use anchors dates to the current clock, grouped by the configured app timezone.
+
+Re-seeding inserts no duplicate records. When an unreviewed example leaves the
+seven-day lookback, or lies ahead of a moved demo clock, unreviewed examples are
+re-anchored as one batch. Within the lookback, timestamps remain stable. Saved
+reviews and their purchase timestamps are never rewritten. A collision with an
+ordinary record fails atomically rather than overwriting it. Reviewed examples
+may eventually leave insights; use a fresh throwaway database for the complete
+unreviewed scenario.
+
+**Reset is explicitly destructive:** the existing gated `POST /api/demo/reset`
+with `{}` clears the whole account, manual/demo transactions, saved reviews,
+lessons and request history; it retains the monotonic device sequence. It does
+not promise to preserve manual data. Re-seeding alone preserves manual data.
+The old skip-$60/save-$50/letter/feed storyline remains unchanged.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the

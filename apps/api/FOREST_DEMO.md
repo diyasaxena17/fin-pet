@@ -99,8 +99,14 @@ with windowDays=4/24. No bank connection or emotional state is inferred.
 
 All three aged purchases are eligible for review. Worth-It verdicts are
 worth_it, unsure, not_worth_it; reviews grant zero reward. Repeating this seed
-command adds zero records and preserves timestamps and saved reviews. Its output
-is a count, not an HTTP response. The old HTTP seed body remains unchanged.
+command adds zero records. Within the seven-day insight lookback it preserves
+timestamps. If an unreviewed example ages out (or is in the future relative to the
+demo clock), it re-anchors all unreviewed examples together to the current seed
+time. Stable IDs, amounts and manual records remain unchanged. Saved reviews and
+their purchase timestamps are always preserved. Its output counts newly inserted
+records, not timestamp refreshes; it is not an HTTP response. The old HTTP seed
+body remains unchanged. Reviewed examples can eventually age out of insights;
+use a fresh throwaway DB to demonstrate all six unreviewed examples again.
 Demo examples count toward spending in their actual local months/days, including
 previous months at a month boundary. They never add goal savings or wallet XP.
 
