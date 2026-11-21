@@ -36,6 +36,7 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
 }
 }
 void configure_server(httplib::Server& server, Database& db, Options options) {
+  server.set_default_headers({{"Cache-Control", "no-store"}});
   server.set_payload_max_length(64 * 1024);
   server.Get("/health", [](const auto&, auto& res) { reply(res, {{"ok", true}}); });
   server.Get("/api/state", [&db](const auto&, auto& res) { reply(res, app_state(db.read())); });

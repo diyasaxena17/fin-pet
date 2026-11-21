@@ -2,6 +2,7 @@
 import concurrent.futures
 import json
 import os
+import select
 from pathlib import Path
 import socket
 import sqlite3
@@ -245,6 +246,42 @@ class HttpTests(unittest.TestCase):
         self.assertIn(b'Mochi startup failed', result.stderr)
         with sqlite3.connect(self.db) as db:
             self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], '{corrupt')
+
+    def test_missing_state_and_unknown_database_versions_fail_startup(self):
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            db.execute('DELETE FROM app_state')
+        for version in [1, 2]:
+            with sqlite3.connect(self.db) as db:
+                db.execute(f'PRAGMA user_version={version}')
+            result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(self.db)}, capture_output=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            with sqlite3.connect(self.db) as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM app_state').fetchone()[0], 0)
+
+    def test_example_pi_poller_emits_feed_once(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        api('POST', '/api/demo/seed', {'coins': 20})
+        poller_path = Path(__file__).resolve().parents[1] / 'examples/poll_device.py'
+        poller = subprocess.Popen([sys.executable, str(poller_path), self.server.base],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            time.sleep(1.2)  # Let the example take its initial baseline without an event.
+            self.assertIsNone(poller.poll())
+            self.assertFalse(select.select([poller.stdout], [], [], 0)[0])
+            feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+            api('POST', '/api/feed', feed)
+            self.assertTrue(select.select([poller.stdout], [], [], 3)[0])
+            reaction = json.loads(poller.stdout.readline())
+            self.assertEqual(reaction['reactionSeq'], 1)
+            self.assertEqual(reaction['reactionType'], 'feed')
+            api('POST', '/api/feed', feed)
+            self.assertFalse(select.select([poller.stdout], [], [], 1.2)[0])
+        finally:
+            poller.terminate()
+            poller.communicate(timeout=5)
 
 
 if __name__ == '__main__':

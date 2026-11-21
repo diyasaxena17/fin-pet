@@ -7,7 +7,7 @@
     "dev": "cmake -S . -B build && cmake --build build && ./build/mochi-api",
     "build": "cmake -S . -B build && cmake --build build",
     "start": "./build/mochi-api",
-    "test": "cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure",
+    "test": "cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure && tsx tests/contract_parity.ts",
     "typecheck": "cmake -S . -B build && cmake --build build"
   },
   "dependencies": {

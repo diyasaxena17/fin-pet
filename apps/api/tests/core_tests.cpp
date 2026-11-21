@@ -64,7 +64,7 @@ void economy() {
   check(state["goal"]["progressPercent"] == 100 && db.read()["account"]["savedCents"] == 20010, "Cents and capped progress");
 }
 void validation() {
-  for (const Json value : std::vector<Json>{nullptr, "5", true, -1, 0, .001, 10.999, 1000000000.01})
+  for (const Json& value : std::vector<Json>{nullptr, "5", true, -1, 0, .001, 10.999, 1000000000.01})
     error([&] { money_cents(value); }, "INVALID_REQUEST");
   check(money_cents(.29) == 29 && money_cents(1000000000) == 100000000000LL, "Money boundaries");
   for (auto changed : {Json{{"goalDate", "2027-02-29"}}, Json{{"petName", " \t"}}, Json{{"goalDate", nullptr}}, Json{{"extra", true}}}) {
