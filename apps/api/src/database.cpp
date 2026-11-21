@@ -1,5 +1,6 @@
 #include "database.hpp"
 #include "game_logic.hpp"
+#include "finance.hpp"
 #include <filesystem>
 #include <memory>
 
@@ -54,12 +55,21 @@ Database::Database(const std::string& path) {
         exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);"
              "CREATE TABLE processed_requests (request_id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, payload TEXT NOT NULL);"
              "CREATE TABLE decisions (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
-             "PRAGMA user_version=1;");
+             "PRAGMA user_version=2;");
         Statement insert(db_, "INSERT INTO app_state(id,payload) VALUES(1,?)");
         insert.text(1, empty_state().dump()); insert.done();
-      } else if (schema_version != 1) throw std::runtime_error("Incompatible Mochi database schema");
+      } else if (schema_version == 1) {
+        // Preserve the complete original payload, history and UUID tables in-place.
+        auto state = load();
+        if (!state.contains("finance")) state["finance"] = empty_finance();
+        validate_stored_state(state);
+        Statement upgrade(db_, "UPDATE app_state SET payload=? WHERE id=1");
+        upgrade.text(1, state.dump()); upgrade.done();
+        exec("PRAGMA user_version=2");
+      } else if (schema_version != 2) throw std::runtime_error("Incompatible Mochi database schema");
     }
     validate_stored_state(load());
+    if (!load().contains("finance")) throw std::runtime_error("Missing finance state");
     // Prepare all tables now, so an incompatible schema fails before listening.
     Statement ids(db_, "SELECT request_id,endpoint,payload FROM processed_requests LIMIT 0");
     Statement decisions(db_, "SELECT request_id,payload FROM decisions LIMIT 0");

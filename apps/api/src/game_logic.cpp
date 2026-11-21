@@ -1,4 +1,5 @@
 #include "game_logic.hpp"
+#include "finance.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -171,11 +172,12 @@ std::string previous_day(const std::string& day) {
   return result.str();
 }
 Json empty_state() {
-  return {{"version", 1}, {"account", nullptr}, {"reactionSeq", 0}, {"reactionType", nullptr}, {"lastGestureAt", 0}};
+  return {{"version", 1}, {"finance", empty_finance()}, {"account", nullptr}, {"reactionSeq", 0}, {"reactionType", nullptr}, {"lastGestureAt", 0}};
 }
 void validate_stored_state(const Json& state) {
   try {
-    fields(state, {"version", "account", "reactionSeq", "reactionType", "lastGestureAt"});
+    fields(state, {"version", "account", "reactionSeq", "reactionType", "lastGestureAt"}, {"finance"});
+    if (state.contains("finance")) validate_finance_state(state.at("finance"));
     if (state.at("version") != 1) invalid();
     integer(state.at("reactionSeq")); integer(state.at("lastGestureAt"));
     const auto& reaction = state.at("reactionType");
@@ -206,7 +208,7 @@ Json app_state(const Json& state, const std::string& day) {
   const auto saved = a.at("savedCents").get<std::int64_t>(), target = a.at("targetCents").get<std::int64_t>();
   auto original_letter = a.at("letter");
   original_letter["revealedSections"] = (saved * 4 >= target ? 1 : 0) + (saved * 2 >= target ? 1 : 0) + (saved >= target ? 1 : 0);
-  return {
+  return additive_state(Json{
     {"initialized", true},
     {"pet", {{"id", "mochi-01"}, {"name", a.at("petName")}, {"hunger", a.at("hunger")}, {"mood", a.at("mood")}}},
     {"wallet", {{"coins", a.at("coins")}, {"xp", a.at("xp")}, {"level", level}, {"nextLevelXp", level == 3 ? Json(nullptr) : Json(level == 2 ? 250 : 100)}}},
@@ -217,7 +219,7 @@ Json app_state(const Json& state, const std::string& day) {
     {"quest", {{"id", "daily-check-in"}, {"available", level >= 2 && !completed}, {"completedToday", completed},
       {"streakDays", completed || a.at("lastQuestDate") == previous_day(today) ? a.at("streakDays") : Json(0)}}},
     {"demoSeeded", a.at("demoSeeded")}
-  };
+  }, state, today);
 }
 void emit_reaction(Json& state, const std::string& type) {
   add(state["reactionSeq"], 1); state["reactionType"] = type;

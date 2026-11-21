@@ -91,7 +91,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('GET', '/api/state'), {'initialized': False})
         api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50}, 404)
         state = api('POST', '/api/onboarding', ONBOARD)
-        self.assertEqual(set(state), {'initialized', 'pet', 'wallet', 'goal', 'letter', 'unlockedFeatures', 'quest', 'demoSeeded'})
+        self.assertEqual(set(state), {'initialized', 'pet', 'wallet', 'goal', 'letter', 'unlockedFeatures', 'quest', 'demoSeeded', 'forest', 'preferences', 'budgetSummary', 'today'})
         api('POST', '/api/onboarding', ONBOARD, 409)
         decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
@@ -116,6 +116,38 @@ class HttpTests(unittest.TestCase):
             decision_row = json.loads(db.execute('SELECT payload FROM decisions').fetchone()[0])
             self.assertEqual(decision_row['amountCents'], 6000)
             self.assertNotIn('amount', decision_row)
+
+    def test_v1_migration_preserves_letter_ids_decisions_and_reactions(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        decision = {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 60, 'decision': 'skip'}
+        api('POST', '/api/decisions', decision)
+        api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        before = api('POST', '/api/feed', feed)
+        device = api('GET', '/api/device/state')
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            del stored['finance']  # Exact original v1 storage keys.
+            db.execute('UPDATE app_state SET payload=?', (json.dumps(stored),))
+            db.execute('PRAGMA user_version=1')
+            history = db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall()
+            decisions = db.execute('SELECT * FROM decisions').fetchall()
+        self.server = Server(self.db, device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(api('POST', '/api/feed', feed), before)
+        self.assertEqual(api('POST', '/api/decisions', decision), before)
+        self.assertEqual(api('GET', '/api/state')['letter']['vision'], ONBOARD['letter']['vision'])
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+            self.assertEqual(db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall(), history)
+            self.assertEqual(db.execute('SELECT * FROM decisions').fetchall(), decisions)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('GET', '/api/state'), before)
 
     def test_validation_is_atomic(self):
         api = self.server.call

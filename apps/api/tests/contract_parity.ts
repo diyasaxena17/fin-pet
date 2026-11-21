@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as contracts from '../../../packages/contracts/src/index.ts';
-import { applyAction, getAppState, emptyStoredState, DomainError, type Action } from '../../../packages/domain/src/index.ts';
+import { applyAction, getAddendumAppState as getAppState, emptyStoredState, DomainError, type Action } from '../../../packages/domain/src/index.ts';
 
 const directory = await mkdtemp(join(tmpdir(), 'mochi-parity-'));
 const reservation = createServer();
