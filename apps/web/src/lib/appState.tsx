@@ -1,19 +1,19 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { AppState } from '@mochi/contracts';
+import type { AddendumAppState } from '@mochi/contracts';
 import { api } from './api';
 import { createRequestId } from './requestId';
 
 interface AppContextValue {
-  state: AppState | null;
+  state: AddendumAppState | null;
   error: string;
   busy: boolean;
   reload(): void;
-  mutate(key: string, operation: (requestId: string) => Promise<AppState>): Promise<boolean>;
+  mutate(key: string, operation: (requestId: string) => Promise<AddendumAppState>): Promise<boolean>;
 }
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState | null>(null);
+  const [state, setState] = useState<AddendumAppState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
@@ -28,7 +28,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [loadVersion]);
 
-  async function mutate(key: string, operation: (requestId: string) => Promise<AppState>): Promise<boolean> {
+  async function mutate(key: string, operation: (requestId: string) => Promise<AddendumAppState>): Promise<boolean> {
     if (running.current) return false;
     running.current = true;
     setBusy(true);
