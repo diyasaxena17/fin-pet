@@ -65,3 +65,13 @@ letter edit or device reaction occurs; demoSeeded becomes true.
 This native command keeps the frozen HTTP `/api/demo/seed` body and behavior
 unchanged. FE-driven transaction demo seeding needs a separately agreed HTTP
 input before being added. No bank connector or synthetic bank provenance exists.
+
+## Check-in serialization and persistence
+
+Both existing POST routes still share lastQuestDate, streak, request history and
+10-acorn/20-XP reward with the level-2 gate. Mutation date is read after acquiring
+BEGIN IMMEDIATE and the application mutex, so a queued pre-midnight request does
+not carry a stale day into a later transaction. Replayed IDs use the current
+response day but do not run the reward callback. Report/budget read dates are
+also captured after loading their database snapshot. No new per-day state or
+second reward ledger was introduced.

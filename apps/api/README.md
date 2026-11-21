@@ -6,6 +6,18 @@ React app consumes the frozen standalone JSON contract without frontend changes.
 For the complete phone/NFC/Pi rehearsal, use [HARDWARE_DEMO.md](HARDWARE_DEMO.md):
 startup, LAN/firewall checks, controller hookup, live steps, and troubleshooting.
 
+## Squirrel & Tree v2 backend branch
+
+The native v2 work is documented in [FOREST_DEMO.md](FOREST_DEMO.md), with
+[contract/FE/hardware gaps](FOREST_CONTRACT_NOTES.md) and
+[observed verification](verification/forest-be-results.md). It adds 48-hour
+reflection eligibility, deterministic shopping/entertainment clustering using
+the existing insight shape, an explicit gated `--seed-forest-demo` command, and
+stronger SQLite/date-boundary checks. Old HTTP seed inputs and ledger behavior
+remain compatible. New daily_checkin/goal_milestone device emissions require
+hardware/shared-contract agreement and remain deferred; the strict poller is
+unchanged. The optional squirrel-name preference also awaits a frozen field.
+
 ## Build, test, run
 
 Requires CMake 3.20+, a C++20 compiler with calendar support (Apple Clang 21 tested;
