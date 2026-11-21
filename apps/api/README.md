@@ -428,6 +428,33 @@ lessons and request history; it retains the monotonic device sequence. It does
 not promise to preserve manual data. Re-seeding alone preserves manual data.
 The old skip-$60/save-$50/letter/feed storyline remains unchanged.
 
+## Forest regression gate (BE-10)
+
+Run the existing tests with the pinned Node/pnpm toolchain:
+
+```sh
+cmake -S apps/api -B apps/api/build
+cmake --build apps/api/build -j 2
+ctest --test-dir apps/api/build --output-on-failure
+pnpm check
+```
+
+`test_forest_scenario_and_replays_persist_with_existing_device_contract` and
+`test_migrated_v1_full_forest_concurrency_and_restart` exercise the same complete
+flow against fresh v2 and representative migrated v1 databases: $500/$25 budget,
+$18 purchase/report, synthetic frequency/cluster evidence, aged reflection,
+once-only lessons/check-in, legacy feeding reaction, $50 confirmed toward $200,
+sapling and original letter reveal, then restart/replay and disabled-device reads.
+Concurrent same-ID transactions/feed and same/fresh-ID reflections are included.
+Existing focused tests cover richer v1 history preservation, age/time boundaries,
+rollback, local-day rules, and once-only rewards.
+
+Results and scope limits are recorded in `verification/be-10-results.md`.
+These automated checks observe real local backend/SQLite process restarts; they
+do not establish physical phone/NFC/Raspberry Pi behavior. Dedicated daily-check-in
+hardware emission and historical clock-rollback protection remain the previously
+documented contract/storage limitations, not newly implemented BE-10 features.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the
