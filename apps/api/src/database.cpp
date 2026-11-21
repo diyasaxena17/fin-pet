@@ -24,6 +24,10 @@ class Statement {
     if (sqlite3_step(stmt) != SQLITE_DONE) throw std::runtime_error("SQLite write failed");
   }
 };
+void validate_current_state(const Json& state) {
+  validate_stored_state(state);
+  if (!state.contains("finance")) throw std::runtime_error("Missing finance state");
+}
 std::string canonical_endpoint(const std::string& endpoint) {
   return endpoint == "/api/quests/complete" ? "/api/check-ins" : endpoint;
 }
@@ -72,7 +76,7 @@ Database::Database(const std::string& path) {
         insert.text(1, empty_state().dump()); insert.done();
       } else if (schema_version == 1) {
         // Preserve the complete original payload, history and UUID tables in-place.
-        auto state = load();
+        auto state = load(true);
         if (!state.contains("finance")) state["finance"] = empty_finance();
         validate_stored_state(state);
         Statement upgrade(db_, "UPDATE app_state SET payload=? WHERE id=1");
@@ -80,8 +84,7 @@ Database::Database(const std::string& path) {
         exec("PRAGMA user_version=2");
       } else if (schema_version != 2) throw std::runtime_error("Incompatible Mochi database schema");
     }
-    validate_stored_state(load());
-    if (!load().contains("finance")) throw std::runtime_error("Missing finance state");
+    (void)load();
     // Prepare all tables now, so an incompatible schema fails before listening.
     Statement ids(db_, "SELECT request_id,endpoint,payload FROM processed_requests LIMIT 0");
     Statement decisions(db_, "SELECT request_id,payload FROM decisions LIMIT 0");
@@ -92,11 +95,12 @@ Database::Database(const std::string& path) {
   }
 }
 Database::~Database() { sqlite3_close(db_); }
-Json Database::load() {
+Json Database::load(bool allow_v1) {
   Statement query(db_, "SELECT payload FROM app_state WHERE id=1");
   if (sqlite3_step(query.stmt) != SQLITE_ROW) throw std::runtime_error("Missing persisted state");
   auto state = Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 0)));
-  validate_stored_state(state);
+  if (allow_v1) validate_stored_state(state);
+  else validate_current_state(state);
   return state;
 }
 Json Database::read() {
@@ -124,7 +128,7 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
       if (result != SQLITE_DONE) throw std::runtime_error("SQLite request lookup failed");
     }
     apply(state);
-    validate_stored_state(state);
+    validate_current_state(state);
     Statement save(db_, "UPDATE app_state SET payload=? WHERE id=1");
     save.text(1, state.dump());
     save.done();

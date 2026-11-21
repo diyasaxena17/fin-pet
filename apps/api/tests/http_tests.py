@@ -150,6 +150,43 @@ class HttpTests(unittest.TestCase):
         self.restart(device=True)
         self.assertEqual(self.server.call('GET', '/api/state'), before)
 
+    def test_v1_migration_failure_rolls_back_schema_payload_and_history(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        savings = {'requestId': request_id(), 'amount': 50}
+        before = api('POST', '/api/savings', savings)
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            legacy = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            del legacy['finance']
+            payload = json.dumps(legacy)
+            db.execute('UPDATE app_state SET payload=?', (payload,))
+            db.execute('PRAGMA user_version=1')
+            history = db.execute('SELECT * FROM processed_requests').fetchall()
+            db.execute("CREATE TRIGGER fail_upgrade BEFORE UPDATE ON app_state BEGIN SELECT RAISE(FAIL, 'migration failure'); END")
+        result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(self.db)}, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+            self.assertEqual(db.execute('SELECT * FROM processed_requests').fetchall(), history)
+            db.execute('DROP TRIGGER fail_upgrade')
+        self.server = Server(self.db)
+        self.assertEqual(self.server.call('GET', '/api/state'), before)
+        self.assertEqual(self.server.call('POST', '/api/savings', savings), before)
+
+    def test_unknown_schema_preserves_an_existing_account(self):
+        self.server.call('POST', '/api/onboarding', ONBOARD)
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            payload = db.execute('SELECT payload FROM app_state').fetchone()[0]
+            db.execute('PRAGMA user_version=999')
+        result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(self.db)}, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 999)
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+
     def test_preferences_budgets_transactions_and_retry_conflicts(self):
         api = self.server.call
         api('PUT', '/api/preferences', {'voice': 'calm'}, 404)
@@ -452,6 +489,26 @@ class HttpTests(unittest.TestCase):
             db.execute('DROP TRIGGER fail_request')
         state = api('POST', '/api/decisions', decision)
         self.assertEqual(state['wallet']['coins'], 60)
+
+    def test_missing_finance_during_runtime_cannot_commit_a_partial_action(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        with sqlite3.connect(self.db) as db:
+            valid = db.execute('SELECT payload FROM app_state').fetchone()[0]
+            corrupt = json.loads(valid)
+            del corrupt['finance']
+            corrupt_payload = json.dumps(corrupt)
+            db.execute('UPDATE app_state SET payload=?', (corrupt_payload,))
+        savings = {'requestId': request_id(), 'amount': 50}
+        api('POST', '/api/savings', savings, 500)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], corrupt_payload)
+            self.assertEqual(db.execute('SELECT count(*) FROM processed_requests').fetchone()[0], 0)
+            db.execute('UPDATE app_state SET payload=?', (valid,))
+        state = api('POST', '/api/savings', savings)
+        self.assertEqual(state['goal']['confirmedSaved'], 50)
+        self.assertEqual(state['wallet']['xp'], 30)
+        self.assertEqual(state['letter']['vision'], ONBOARD['letter']['vision'])
 
     def test_corrupt_state_fails_startup_without_overwriting(self):
         self.server.close()
