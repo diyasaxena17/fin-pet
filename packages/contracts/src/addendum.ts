@@ -45,7 +45,9 @@ export const ZERO_REWARD: Readonly<Reward> = Object.freeze({ coins: 0, xp: 0 });
 export type TreeStage = 'seedling' | 'sapling' | 'young' | 'mature' | 'thriving';
 export const treeStages: readonly Readonly<{ stage: TreeStage; minimumPercent: number }>[] =
   Object.freeze(rules.treeStages.map((entry) => Object.freeze({ ...entry, stage: entry.stage as TreeStage })));
-export const lessonCatalogue = rules.lessons;
+export const lessonCatalogue = Object.freeze(rules.lessons.map((lesson) => Object.freeze({
+  ...lesson, options: Object.freeze(lesson.options.map((option) => Object.freeze({ ...option }))),
+})));
 export function treeStageFor(progressPercent: number): TreeStage {
   if (!Number.isFinite(progressPercent) || progressPercent < 0) throw new RangeError('Invalid goal progress');
   return [...treeStages].reverse().find(({ minimumPercent }) => progressPercent >= minimumPercent)!.stage;

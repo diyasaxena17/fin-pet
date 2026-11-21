@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  categorySchema, categoryLabels, lessonCatalogue, treeStageFor, voiceSchema, reflectionVerdictSchema,
+  categorySchema, categoryLabels, lessonCatalogue, treeStageFor, voiceSchema, reflectionVerdictSchema, monthSchema,
   CHECK_IN_REWARD, LESSON_REWARD, ZERO_REWARD,
   type BudgetInput, type BudgetSummary, type Transaction, type PreferencesInput, type TransactionInput,
   type ReflectionInput, type LessonAnswerInput, type CheckInInput, type AddendumAppState,
@@ -11,7 +11,7 @@ import { applyAction, getAppState, localDate, DomainError, DEFAULT_TIME_ZONE, ty
 const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const financeSchema = z.strictObject({
   preferences: z.strictObject({ voice: voiceSchema }),
-  budgets: z.record(z.string(), z.strictObject({ monthlyCents: integer.positive(), dailyCents: integer.positive().nullable(), categoryCents: z.record(z.string(), integer.positive()) })),
+  budgets: z.record(monthSchema, z.strictObject({ monthlyCents: integer.positive(), dailyCents: integer.positive().nullable(), categoryCents: z.partialRecord(categorySchema, integer.positive()) })),
   transactions: z.array(z.strictObject({
     id: z.string(), name: z.string(), amountCents: integer.positive(), category: categorySchema,
     occurredAt: z.iso.datetime({ offset: true }), planned: z.boolean(), source: z.enum(['manual', 'demo']),
@@ -56,8 +56,8 @@ export function applyAddendumAction(stored: StoredState, action: AddendumAction,
   const id = 'requestId' in input ? input.requestId : undefined;
   if (id && stored.processedRequestIds.includes(id)) {
     const previous = stored.finance.operations[id];
-    if ((structured.has(canonical(action)) || (previous && structured.has(previous.type))) &&
-        (!previous || previous.type !== canonical(action) || stable(previous.input) !== stable(canonicalInput(action))))
+    if ((structured.has(action.type) || (previous && structured.has(previous.type))) &&
+        (!previous || (previous.type === 'quest' ? 'checkIn' : previous.type) !== canonical(action) || stable(previous.input) !== stable(canonicalInput(action))))
       throw new DomainError(409, 'REQUEST_ID_CONFLICT', 'This request ID belongs to another operation.');
     return structuredClone(stored);
   }
@@ -109,7 +109,7 @@ export function applyAddendumAction(stored: StoredState, action: AddendumAction,
   }
   if (id) {
     if (!next.processedRequestIds.includes(id)) next.processedRequestIds.push(id);
-    next.finance.operations[id] = { type: canonical(action), input: canonicalInput(action) };
+    next.finance.operations[id] = { type: action.type, input: canonicalInput(action) };
   }
   return next;
 }
@@ -168,7 +168,7 @@ export function getLessons(stored: StoredState): LessonSummary[] {
   accountRequired(stored);
   return lessonCatalogue.map(({ correctOptionId: _, feedback: __, ...lesson }) => {
     const completed = stored.finance.completedLessons.includes(lesson.id);
-    return structuredClone({ ...lesson, completed, availableReward: completed ? ZERO_REWARD : LESSON_REWARD });
+    return structuredClone({ ...lesson, options: [...lesson.options], completed, availableReward: completed ? ZERO_REWARD : LESSON_REWARD });
   });
 }
 export function getDailyReport(stored: StoredState, now = new Date(), timeZone = DEFAULT_TIME_ZONE): DailyReport {

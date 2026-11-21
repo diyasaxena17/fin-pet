@@ -80,6 +80,14 @@ describe('additive finance rules', () => {
     expect(stored.account).toMatchObject({ xp: 10, coins: 5 });
     expect(getLessons(stored)[0]).toMatchObject({ completed: true, availableReward: { coins: 0, xp: 0 } });
   });
+  it('preserves V1 cross-route replay semantics while protecting structured new responses', () => {
+    let stored = applyAddendumAction(onboard(), { type: 'seed', input: { xp: 100 } }, now);
+    const requestId = randomUUID();
+    stored = applyAddendumAction(stored, { type: 'quest', input: { requestId, questId: 'daily-check-in' } }, now);
+    expect(applyAddendumAction(stored, { type: 'savings', input: { requestId, amount: 100 } }, now)).toEqual(stored);
+    expect(applyAddendumAction(stored, { type: 'checkIn', input: { requestId } }, now)).toEqual(stored);
+    expect(() => applyAddendumAction(stored, { type: 'transaction', input: { requestId, name: 'Item', amount: 1, category: 'other', occurredAt: now.toISOString() } }, now)).toThrow('another operation');
+  });
   it('shares one check-in reward across aliases and local midnight', () => {
     let stored = applyAddendumAction(onboard(), { type: 'seed', input: { xp: 100 } }, now);
     const beforeMidnight = new Date('2026-11-22T04:59:59Z');
