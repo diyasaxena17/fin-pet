@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import rules from '../fixtures/rules.json';
-import type { AppState, InitializedAppState, MochiApi } from './index';
+import type { AppState, InitializedAppState, MochiApi, OnboardingInput, LetterInput, DecisionInput, SavingsInput, FeedInput, QuestInput, DemoSeedInput } from './index';
 import { moneySchema } from './money';
 
 export const voiceSchema = z.enum(['cute', 'calm']);
@@ -88,6 +88,14 @@ export interface CheckInResponse { completedToday: boolean; reward: Reward; stat
 /** Separate extension lets V1 consumers keep working during the owners' rebase. */
 export interface AddendumMochiApi extends MochiApi {
   getState(): Promise<AddendumAppState>;
+  onboard(input: OnboardingInput): Promise<AddendumInitializedAppState>;
+  updateLetter(input: LetterInput): Promise<AddendumInitializedAppState>;
+  submitDecision(input: DecisionInput): Promise<AddendumInitializedAppState>;
+  recordSavings(input: SavingsInput): Promise<AddendumInitializedAppState>;
+  feedPet(input: FeedInput): Promise<AddendumInitializedAppState>;
+  completeQuest(input: QuestInput): Promise<AddendumInitializedAppState>;
+  demoSeed(input: DemoSeedInput): Promise<AddendumInitializedAppState>;
+  demoReset(): Promise<AddendumAppState>;
   updatePreferences(input: PreferencesInput): Promise<AddendumInitializedAppState>;
   getBudgets(month: string): Promise<BudgetSummary>;
   updateBudgets(input: BudgetInput): Promise<BudgetSummary>;

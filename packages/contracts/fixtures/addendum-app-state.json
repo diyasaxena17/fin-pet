@@ -1,0 +1,99 @@
+{
+  "initialized": true,
+  "pet": {
+    "id": "mochi-01",
+    "name": "Mochi",
+    "hunger": 50,
+    "mood": "neutral"
+  },
+  "wallet": {
+    "coins": 0,
+    "xp": 0,
+    "level": 1,
+    "nextLevelXp": 100
+  },
+  "goal": {
+    "title": "Emergency fund",
+    "targetAmount": 200,
+    "confirmedSaved": 0,
+    "potentialSavings": 0,
+    "progressPercent": 0,
+    "goalDate": null
+  },
+  "letter": {
+    "vision": "I want my future self to feel secure.",
+    "why": "I want more room to choose.",
+    "reminder": "Small steps count.",
+    "revealedSections": 0
+  },
+  "unlockedFeatures": [
+    "spending",
+    "goal",
+    "feed",
+    "basicProjection",
+    "letter"
+  ],
+  "quest": {
+    "id": "daily-check-in",
+    "available": false,
+    "completedToday": false,
+    "streakDays": 0
+  },
+  "demoSeeded": false,
+  "forest": {
+    "treeStage": "seedling",
+    "growthPercent": 0
+  },
+  "preferences": {
+    "voice": "cute"
+  },
+  "budgetSummary": {
+    "month": "2026-11",
+    "monthlyLimit": null,
+    "dailyLimit": null,
+    "spentThisMonth": 0,
+    "spentToday": 0,
+    "remainingThisMonth": null,
+    "categories": [
+      {
+        "id": "food",
+        "label": "Food & Drink",
+        "spent": 0,
+        "limit": null
+      },
+      {
+        "id": "shopping",
+        "label": "Shopping",
+        "spent": 0,
+        "limit": null
+      },
+      {
+        "id": "transport",
+        "label": "Transport",
+        "spent": 0,
+        "limit": null
+      },
+      {
+        "id": "entertainment",
+        "label": "Entertainment",
+        "spent": 0,
+        "limit": null
+      },
+      {
+        "id": "bills",
+        "label": "Bills",
+        "spent": 0,
+        "limit": null
+      },
+      {
+        "id": "other",
+        "label": "Other",
+        "spent": 0,
+        "limit": null
+      }
+    ]
+  },
+  "today": {
+    "checkInCompleted": false
+  }
+}

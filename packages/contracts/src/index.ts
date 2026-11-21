@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import fixture from '../fixtures/app-state.json';
+import addendumFixture from '../fixtures/addendum-app-state.json';
+import { preferencesSchema, categorySchema, treeStageFor, type AddendumInitializedAppState } from './addendum';
 
 import { moneySchema } from './money';
 export { moneySchema } from './money';
@@ -82,3 +84,17 @@ export function createAppState(): InitializedAppState {
 }
 
 export * from './addendum';
+
+const checkedAddendumFixture = {
+  ...checkedFixture,
+  forest: { ...addendumFixture.forest, treeStage: treeStageFor(addendumFixture.forest.growthPercent) },
+  preferences: preferencesSchema.parse(addendumFixture.preferences),
+  budgetSummary: { ...addendumFixture.budgetSummary, categories: addendumFixture.budgetSummary.categories.map(
+    (category) => ({ ...category, id: categorySchema.parse(category.id) }),
+  ) },
+  today: addendumFixture.today,
+} satisfies AddendumInitializedAppState;
+export const addendumAppStateFixture: DeepReadonly<AddendumInitializedAppState> = deepFreeze(checkedAddendumFixture);
+export function createAddendumAppState(): AddendumInitializedAppState {
+  return structuredClone(addendumAppStateFixture) as AddendumInitializedAppState;
+}
