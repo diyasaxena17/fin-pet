@@ -282,6 +282,52 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
         self.assertEqual(self.server.call('GET', '/api/device/state'), device)
 
+    def seed_forest(self, demo=True, status=0):
+        result = subprocess.run([BINARY, '--seed-forest-demo'], env={**os.environ, 'DB_PATH': str(self.db),
+            'DEMO_MODE': str(demo).lower()}, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, status, result.stderr.decode())
+        return json.loads(result.stdout) if status == 0 else result.stderr.decode()
+
+    def test_explicit_demo_examples_are_gated_atomic_and_retry_stable(self):
+        api = self.server.call
+        self.assertIn('DEMO_MODE=true', self.seed_forest(demo=False, status=1))
+        self.assertIn('Onboard', self.seed_forest(status=1))
+        before = api('POST', '/api/onboarding', ONBOARD)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_forest_seed BEFORE UPDATE ON app_state BEGIN SELECT RAISE(FAIL, 'seed failure'); END")
+        self.seed_forest(status=1)
+        self.assertEqual(api('GET', '/api/state'), before)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_forest_seed')
+        self.assertEqual(self.seed_forest(), {'seededTransactions': 6})
+        state = api('GET', '/api/state')
+        self.assertTrue(state['demoSeeded'])
+        self.assertEqual(state['goal'], before['goal'])
+        self.assertEqual(state['wallet'], before['wallet'])
+        self.assertEqual(state['letter'], before['letter'])
+        self.assertEqual(state['pet'], before['pet'])
+        insights = api('GET', '/api/insights')['insights']
+        self.assertEqual(len(insights), 2)
+        self.assertTrue(all(i['source'] == 'demo' for i in insights))
+        self.assertEqual(sorted(i['evidence']['totalAmount'] for i in insights), [35, 54])
+        due = api('GET', '/api/reflections/due')['transactions']
+        self.assertEqual(len(due), 3)
+        self.assertTrue(all(t['source'] == 'demo' for t in due))
+        review = {'requestId': request_id(), 'transactionId': due[0]['id'], 'verdict': 'unsure'}
+        reflected = api('POST', '/api/reflections', review)['transaction']
+        self.assertEqual(self.seed_forest(), {'seededTransactions': 0})
+        self.assertEqual(api('POST', '/api/reflections', review)['transaction'], reflected)
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            transactions = stored['finance']['transactions']
+            self.assertEqual(len(transactions), 6)
+            self.assertTrue(all('amountCents' in t and 'amount' not in t for t in transactions))
+            self.assertEqual(db.execute('SELECT count(*) FROM processed_requests').fetchone()[0], 1)
+        self.restart()
+        self.assertEqual(self.seed_forest(), {'seededTransactions': 0})
+        self.assertEqual(self.server.call('GET', '/api/insights')['insights'], insights)
+        self.assertEqual(self.server.call('POST', '/api/reflections', review)['transaction'], reflected)
+
     def test_discretionary_clusters_use_existing_evidence_shape_and_survive_restart(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)

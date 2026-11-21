@@ -52,3 +52,16 @@ their IDs and fields. The frozen shared mock currently implements that old rule
 only. FE can render both shapes, but its mock needs the new clustering behavior
 before full v2 parity can be claimed. The shared owner should freeze the
 shopping/entertainment classification and four-hour evidence convention.
+
+## Explicit demo examples
+
+`DEMO_MODE=true DB_PATH=<explicit-path> mochi-api --seed-forest-demo` seeds six
+records atomically after onboarding: three Takeout records aged 70–72 hours and
+three recent shopping/entertainment examples in a one-hour span. All are
+`source:"demo"`. Stable transaction IDs make reruns no-ops for existing examples
+and preserve reflection verdicts and timestamps. No wallet reward, goal saving,
+letter edit or device reaction occurs; demoSeeded becomes true.
+
+This native command keeps the frozen HTTP `/api/demo/seed` body and behavior
+unchanged. FE-driven transaction demo seeding needs a separately agreed HTTP
+input before being added. No bank connector or synthetic bank provenance exists.
