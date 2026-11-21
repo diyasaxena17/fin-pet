@@ -23,16 +23,25 @@ export ENABLE_DEVICE_API=true
 export DEMO_MODE=true
 cd "$repo_dir"
 build_dir="${MOCHI_BUILD_DIR:-$api_dir/build}"
-# Fail before starting if the requested port is occupied. The API also checks bind.
+# Reject a live listener, not a recently closed socket in TIME_WAIT. cpp-httplib
+# uses SO_REUSEPORT; a SO_REUSEADDR-only bind probe falsely fails on Linux restart.
+# The API's actual bind remains authoritative (another process can race preflight).
 python3 - <<'PY'
 import os, socket, sys
 try:
     port = int(os.environ['PORT'])
     if not 1 <= port <= 65535:
         raise ValueError('PORT must be 1..65535')
+    host = os.environ['API_HOST']
+    probe_host = '127.0.0.1' if host == '0.0.0.0' else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((os.environ['API_HOST'], port))
+        sock.settimeout(1)
+        try:
+            sock.connect((probe_host, port))
+        except ConnectionRefusedError:
+            pass  # No live listener; TIME_WAIT must not block a backend restart.
+        else:
+            raise ValueError(f'A service is already listening on {host}:{port}')
 except (OSError, ValueError) as error:
     sys.exit(f'Demo preflight failed: {error}. Stop the existing process or check API_HOST/PORT.')
 PY

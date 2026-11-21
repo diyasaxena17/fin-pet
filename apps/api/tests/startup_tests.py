@@ -37,13 +37,15 @@ class StartupTests(unittest.TestCase):
                 with response:
                     return response.status, json.load(response)
 
-            for attempt in range(2):
+            # Reuse the same port immediately after real HTTP traffic. On Linux,
+            # TIME_WAIT must not be mistaken for another running backend.
+            for attempt in range(3):
                 process = subprocess.Popen([str(SCRIPT), '--no-build'], cwd=directory,
                                            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 try:
                     for _ in range(100):
                         if process.poll() is not None:
-                            self.fail(str(process.communicate()))
+                            self.fail(f'Launcher attempt {attempt + 1}: {process.communicate()}')
                         try:
                             if call('/health')[0] == 200:
                                 break
