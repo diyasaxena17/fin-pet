@@ -146,6 +146,25 @@ Json validate_input(Action action, Json input) {
       if (input.contains("confirmedSaved")) money_cents(input.at("confirmedSaved"), true);
       break;
     case Action::reset: fields(input, {}); break;
+    case Action::preferences:
+      fields(input, {"voice"}); if (input.at("voice") != "cute" && input.at("voice") != "calm") invalid(); break;
+    case Action::budget:
+      fields(input, {"month", "monthlyLimit"}, {"dailyLimit", "categoryLimits"});
+      if (!input.at("month").is_string()) invalid();
+      validate_month(input.at("month").get<std::string>()); money_cents(input.at("monthlyLimit"));
+      if (input.contains("dailyLimit")) money_cents(input.at("dailyLimit"));
+      if (input.contains("categoryLimits")) {
+        if (!input.at("categoryLimits").is_object()) invalid();
+        for (const auto& [key, limit] : input.at("categoryLimits").items()) { if (!is_category(key)) invalid(); money_cents(limit); }
+      }
+      break;
+    case Action::transaction:
+      fields(input, {"requestId", "name", "amount", "category", "occurredAt"}, {"planned"});
+      uuid(input.at("requestId")); input["name"] = text(input.at("name"), 200, true);
+      money_cents(input.at("amount")); if (!is_category(input.at("category"))) invalid();
+      timestamp_millis(input.at("occurredAt"));
+      if (input.contains("planned") && !input.at("planned").is_boolean()) invalid();
+      break;
     case Action::gesture:
       fields(input, {"gesture"}); if (input.at("gesture") != "open_palm") invalid(); break;
   }
@@ -246,6 +265,8 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
   if (a.is_null()) throw ApiError(404, "NOT_INITIALIZED", "Set up Mochi before using this action.");
   const int before_level = level_for(a.at("xp").get<std::int64_t>());
   switch (action) {
+    case Action::preferences: case Action::budget: case Action::transaction:
+      apply_finance_action(state, action, input, current_millis()); break;
     case Action::letter: a["letter"] = input.at("letter"); break;
     case Action::decision:
       if (input.at("decision") == "skip") {

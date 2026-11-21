@@ -1,5 +1,6 @@
 #include "http_server.hpp"
 #include "game_logic.hpp"
+#include "finance.hpp"
 
 namespace mochi {
 namespace {
@@ -29,11 +30,16 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
     const auto day = local_day();
     const auto stored = db.mutate(input.value("requestId", std::string{}), req.path, input,
       [&](Json& state) { apply_action(state, action, input, day); }, action == Action::reset);
-    reply(res, action == Action::gesture ? device_state(stored) : app_state(stored, day));
+    reply(res, action == Action::gesture ? device_state(stored) : finance_mutation_response(action, stored, input, day));
   } catch (const ApiError& error) {
     reply(res, {{"error", {{"code", error.code}, {"message", error.what()}}}}, error.status);
   }
 }
+std::string month_query(const httplib::Request& req) {
+  if (req.params.size() != 1 || !req.has_param("month")) throw ApiError(400, "INVALID_REQUEST", "Supply one month query parameter.");
+  const auto month = req.get_param_value("month"); validate_month(month); return month;
+}
+
 }
 void configure_server(httplib::Server& server, Database& db, Options options) {
   server.set_default_headers({{"Cache-Control", "no-store"}});
@@ -46,6 +52,11 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
   server.Post("/api/savings", [&db](const auto& req, auto& res) { mutate(db, Action::savings, req, res); });
   server.Post("/api/feed", [&db](const auto& req, auto& res) { mutate(db, Action::feed, req, res); });
   server.Post("/api/quests/complete", [&db](const auto& req, auto& res) { mutate(db, Action::quest, req, res); });
+  server.Put("/api/preferences", [&db](const auto& req, auto& res) { mutate(db, Action::preferences, req, res); });
+  server.Get("/api/budgets", [&db](const auto& req, auto& res) { reply(res, budget_summary(db.read(), month_query(req), local_day())); });
+  server.Put("/api/budgets", [&db](const auto& req, auto& res) { mutate(db, Action::budget, req, res); });
+  server.Get("/api/transactions", [&db](const auto& req, auto& res) { reply(res, {{"transactions", transactions_for(db.read(), month_query(req))}}); });
+  server.Post("/api/transactions", [&db](const auto& req, auto& res) { mutate(db, Action::transaction, req, res); });
   if (options.demo_mode) {
     server.Post("/api/demo/seed", [&db](const auto& req, auto& res) { mutate(db, Action::seed, req, res); });
     server.Post("/api/demo/reset", [&db](const auto& req, auto& res) { mutate(db, Action::reset, req, res); });

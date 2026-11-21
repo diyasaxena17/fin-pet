@@ -24,6 +24,18 @@ class Statement {
     if (sqlite3_step(stmt) != SQLITE_DONE) throw std::runtime_error("SQLite write failed");
   }
 };
+std::string canonical_endpoint(const std::string& endpoint) {
+  return endpoint == "/api/quests/complete" ? "/api/check-ins" : endpoint;
+}
+bool structured_endpoint(const std::string& endpoint) {
+  const auto& path = endpoint;
+  return path == "/api/check-ins" || path == "/api/transactions" || path == "/api/reflections" || path == "/api/lessons/answer";
+}
+Json canonical_input(const std::string& endpoint, Json input) {
+  if (endpoint == "/api/quests/complete") input.erase("questId");
+  return input;
+}
+
 }
 void Database::exec(const char* sql) {
   if (sqlite3_exec(db_, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
@@ -98,10 +110,17 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
   try {
     auto state = load();
     if (!id.empty()) {
-      Statement query(db_, "SELECT 1 FROM processed_requests WHERE request_id=?");
+      Statement query(db_, "SELECT endpoint,payload FROM processed_requests WHERE request_id=?");
       query.text(1, id);
       const int result = sqlite3_step(query.stmt);
-      if (result == SQLITE_ROW) { exec("COMMIT"); return state; }
+      if (result == SQLITE_ROW) {
+        const std::string previous = reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 0));
+        const auto previous_input = Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 1)));
+        if ((structured_endpoint(endpoint) || structured_endpoint(previous)) &&
+            (canonical_endpoint(endpoint) != canonical_endpoint(previous) || canonical_input(endpoint, input) != canonical_input(previous, previous_input)))
+          throw ApiError(409, "REQUEST_ID_CONFLICT", "This request ID belongs to another operation.");
+        exec("COMMIT"); return state;
+      }
       if (result != SQLITE_DONE) throw std::runtime_error("SQLite request lookup failed");
     }
     apply(state);

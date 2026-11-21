@@ -149,6 +149,57 @@ class HttpTests(unittest.TestCase):
         self.restart(device=True)
         self.assertEqual(self.server.call('GET', '/api/state'), before)
 
+    def test_preferences_budgets_transactions_and_retry_conflicts(self):
+        api = self.server.call
+        api('PUT', '/api/preferences', {'voice': 'calm'}, 404)
+        before = api('POST', '/api/onboarding', ONBOARD)
+        self.assertIsNone(before['budgetSummary']['monthlyLimit'])
+        preferences = api('PUT', '/api/preferences', {'voice': 'calm'})
+        self.assertEqual(preferences['preferences'], {'voice': 'calm'})
+        api('PUT', '/api/preferences', {'voice': 'loud'}, 400)
+        budget = api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 10, 'dailyLimit': 25, 'categoryLimits': {'food': 5}})
+        self.assertEqual(budget['spentThisMonth'], 0)
+        transaction = {'requestId': request_id(), 'name': '  Takeout  ', 'amount': 18.29,
+                       'category': 'food', 'occurredAt': '2026-11-19T19:30:00-05:00'}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(lambda _: api('POST', '/api/transactions', transaction), range(5)))
+        self.assertTrue(all(result == results[0] for result in results))
+        result = results[0]
+        self.assertEqual(result['transaction']['source'], 'manual')
+        self.assertFalse(result['transaction']['planned'])
+        self.assertEqual(result['transaction']['name'], 'Takeout')
+        self.assertEqual(result['budget']['remainingThisMonth'], -8.29)
+        state = api('GET', '/api/state')
+        self.assertEqual(state['goal'], before['goal'])
+        self.assertEqual(state['letter'], before['letter'])
+        self.assertEqual(state['wallet'], before['wallet'])
+        api('POST', '/api/transactions', {**transaction, 'amount': 1}, 409)
+        conflict = api('POST', '/api/savings', {'requestId': transaction['requestId'], 'amount': 1}, 409)
+        self.assertEqual(conflict['error']['code'], 'REQUEST_ID_CONFLICT')
+        offset = {**transaction, 'requestId': request_id(), 'amount': .29, 'occurredAt': '2026-11-01T01:00:00+14:00'}
+        result = api('POST', '/api/transactions', offset)
+        self.assertEqual(result['budget']['month'], '2026-10')
+        self.assertEqual(api('GET', '/api/budgets?month=2026-10')['spentThisMonth'], .29)
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+        for query in ['', '?month=2026-13', '?month=2026-11&month=2026-10', '?month=2026-11&extra=1']:
+            api('GET', '/api/budgets' + query, status=400)
+        for changed in [{'amount': .001}, {'source': 'bank-connected'}, {'occurredAt': '2026-02-30T12:00:00Z'},
+                        {'occurredAt': '2099-01-01T00:00:00Z'}, {'category': 'unknown'}, {'planned': 'false'}]:
+            api('POST', '/api/transactions', {**transaction, 'requestId': request_id(), **changed}, 400)
+        api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 0}, 400)
+        cleared = api('PUT', '/api/budgets', {'month': '2026-11', 'monthlyLimit': 500})
+        self.assertIsNone(cleared['dailyLimit'])
+        self.assertTrue(all(category['limit'] is None for category in cleared['categories']))
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            self.assertEqual(stored['finance']['transactions'][0]['amountCents'], 1829)
+            self.assertNotIn('amount', stored['finance']['transactions'][0])
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state')['preferences'], {'voice': 'calm'})
+        self.assertEqual(api('POST', '/api/transactions', transaction)['transaction'], results[0]['transaction'])
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
     def test_validation_is_atomic(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)

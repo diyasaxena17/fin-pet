@@ -40,6 +40,34 @@ std::string transaction_day(const Json& transaction) {
     std::chrono::milliseconds(timestamp_millis(transaction.at("occurredAt")))).count()));
 }
 }
+void validate_month(const std::string& month) { month_format(month); }
+bool is_category(const Json& value) { return category(value); }
+void apply_finance_action(Json& state, Action action, const Json& input, std::int64_t now_ms) {
+  require_account(state); auto& finance = state["finance"];
+  if (action == Action::preferences) finance["preferences"] = input;
+  else if (action == Action::budget) {
+    Json limits = Json::object();
+    if (input.contains("categoryLimits")) for (const auto& [id, limit] : input.at("categoryLimits").items()) limits[id] = money_cents(limit);
+    finance["budgets"][input.at("month").get<std::string>()] = {{"monthlyCents", money_cents(input.at("monthlyLimit"))},
+      {"dailyCents", input.contains("dailyLimit") ? Json(money_cents(input.at("dailyLimit"))) : Json(nullptr)}, {"categoryCents", limits}};
+  } else if (action == Action::transaction) {
+    if (timestamp_millis(input.at("occurredAt")) > now_ms) throw ApiError(400, "INVALID_REQUEST", "Transactions cannot be in the future.");
+    const auto amount = money_cents(input.at("amount")); std::int64_t total = amount;
+    for (const auto& t : finance.at("transactions")) total = sum(total, t.at("amountCents").get<std::int64_t>());
+    finance["transactions"].push_back({{"id", "txn-" + input.at("requestId").get<std::string>()}, {"name", input.at("name")},
+      {"amountCents", amount}, {"category", input.at("category")}, {"occurredAt", input.at("occurredAt")},
+      {"planned", input.value("planned", false)}, {"source", "manual"}, {"reflection", nullptr}});
+  }
+}
+Json finance_mutation_response(Action action, const Json& state, const Json& input, const std::string& day) {
+  if (action == Action::budget) return budget_summary(state, input.at("month"), day);
+  if (action == Action::transaction) {
+    for (const auto& t : state.at("finance").at("transactions")) if (t.at("id") == "txn-" + input.at("requestId").get<std::string>())
+      return {{"transaction", transaction_view(t)}, {"budget", budget_summary(state, transaction_day(t).substr(0, 7), day)}};
+    throw ApiError(409, "REQUEST_ID_CONFLICT", "This request ID belongs to another operation.");
+  }
+  return app_state(state, day);
+}
 std::int64_t current_millis() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
