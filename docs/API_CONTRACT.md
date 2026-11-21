@@ -5,12 +5,15 @@ Mochi's current standalone application scope. The [original proposal](reference/
 is retained for reference. This version supersedes the earlier inferred scaffold
 contract. Future shared changes follow the contract PR process.
 
+The [shared addendum](API_ADDENDUM.md) defines the additive next contract.
+
 ## Scope decisions
 
 - Mochi runs as a normal mobile-first application with a virtual pet. Feeding
   works directly in the app; NFC/QR can optionally open the same confirmation.
-- Device state, gesture routes, camera integration, hardware events, and
-  `AppState.device` are removed. No physical device is required.
+- No physical device is required. `AppState.device` is absent. The native API
+  preserves optional device state/gesture routes behind `ENABLE_DEVICE_API=true`;
+  they return 404 by default. See the addendum for their privacy boundary.
 - `demoSeeded: boolean` is added to initialized state so the UI can display a
   persistent DEMO label after seeding. Reset clears it.
 - Reward-bearing decisions, savings, feeds, and quest requests require a UUID
@@ -19,7 +22,7 @@ contract. Future shared changes follow the contract PR process.
 
 ## Transport and responses
 
-Base URL: `/api`, proxied by Vite to Express at `http://localhost:3000`.
+Base URL: `/api`, proxied by Vite to the C++20 API at `http://localhost:3000`.
 All mutation requests use `Content-Type: application/json`. This is a single-user,
 local demo without authentication. Use sample personal/letter data.
 
@@ -135,17 +138,17 @@ retains an ID for retries of the same pending operation within the current app
 session. It never automatically retries mutations. Reloading starts a new client
 session; callers retrying outside it must retain their original ID.
 
-`@mochi/domain` contains the shared pure rules used by API and mock. The API
-serializes read/modify/write operations and saves the state, IDs, and decision
-history together to `DATA_FILE`, resolved relative to the workspace root. It
-writes a flushed temporary file and renames it before publishing in-memory state.
-A failed save returns 500 and leaves the previous state intact. Corrupt or
-incompatible files fail startup rather than being silently replaced.
+`@mochi/domain` contains the pure reference rules used by the isolated mock;
+the C++ API is checked against them by differential tests. The live API stores
+integer-cent account JSON, decisions and global UUIDs in SQLite (`DB_PATH`). Each
+mutation uses a mutex and `BEGIN IMMEDIATE`; state, IDs, decisions and reaction
+metadata commit together. Exceptions roll back. WAL and FULL synchronization
+support restart persistence. Corrupt or incompatible files fail startup rather
+than being silently replaced. See [backend storage details](../apps/api/README.md).
+The historical `DATA_FILE` setting is not used by the C++ runtime.
 
-Run one API process per data file. This local JSON repository is not a
-multi-process database. The mock uses the same rules and validation but stores
-only session memory; it resets on reload. Runtime state and secrets stay out of
-Git. Existing scaffold fixtures are not persisted user-data migrations.
+The mock uses session memory only; it resets on reload. Runtime state and secrets
+stay out of Git. Shared fixtures are examples, never persisted user-data migrations.
 
 ## Errors
 

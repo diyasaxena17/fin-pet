@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import fixture from '../fixtures/app-state.json';
+import addendumFixture from '../fixtures/addendum-app-state.json';
+import { preferencesSchema, categorySchema, treeStageFor, type AddendumInitializedAppState } from './addendum';
 
-/** CAD on the wire, integer cents in the domain and persistence layers. */
-export const moneySchema = z.number().finite().min(0.01).max(1_000_000_000)
-  .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001, 'Use at most two decimal places');
+import { moneySchema } from './money';
+export { moneySchema } from './money';
 const text = z.string().trim().min(1).max(200);
 export const letterSchema = z.strictObject({
   vision: z.string().max(4000), why: z.string().max(4000), reminder: z.string().max(4000),
@@ -49,7 +50,7 @@ export interface InitializedAppState {
 }
 export type AppState = { initialized: false } | InitializedAppState;
 export interface HealthResponse { ok: true }
-export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'NOT_INITIALIZED' | 'ALREADY_INITIALIZED' | 'INSUFFICIENT_COINS' | 'QUEST_UNAVAILABLE' | 'LIMIT_EXCEEDED' | 'INTERNAL_ERROR';
+export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'NOT_INITIALIZED' | 'ALREADY_INITIALIZED' | 'INSUFFICIENT_COINS' | 'QUEST_UNAVAILABLE' | 'LIMIT_EXCEEDED' | 'INTERNAL_ERROR' | 'REQUEST_ID_CONFLICT' | 'REFLECTION_EXISTS' | 'REFLECTION_NOT_DUE';
 export interface ApiErrorResponse { error: { code: ApiErrorCode; message: string } }
 
 export interface MochiApi {
@@ -80,4 +81,20 @@ export const appStateFixture: DeepReadonly<InitializedAppState> = deepFreeze(che
 /** Sample initialized account; GET before onboarding instead returns initialized:false. */
 export function createAppState(): InitializedAppState {
   return structuredClone(appStateFixture) as InitializedAppState;
+}
+
+export * from './addendum';
+
+const checkedAddendumFixture = {
+  ...checkedFixture,
+  forest: { ...addendumFixture.forest, treeStage: treeStageFor(addendumFixture.forest.growthPercent) },
+  preferences: preferencesSchema.parse(addendumFixture.preferences),
+  budgetSummary: { ...addendumFixture.budgetSummary, categories: addendumFixture.budgetSummary.categories.map(
+    (category) => ({ ...category, id: categorySchema.parse(category.id) }),
+  ) },
+  today: addendumFixture.today,
+} satisfies AddendumInitializedAppState;
+export const addendumAppStateFixture: DeepReadonly<AddendumInitializedAppState> = deepFreeze(checkedAddendumFixture);
+export function createAddendumAppState(): AddendumInitializedAppState {
+  return structuredClone(addendumAppStateFixture) as AddendumInitializedAppState;
 }

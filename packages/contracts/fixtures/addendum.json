@@ -1,0 +1,29 @@
+{
+  "budget": {
+    "month": "2026-11", "monthlyLimit": 500, "dailyLimit": 25,
+    "spentThisMonth": 136, "spentToday": 18, "remainingThisMonth": 364,
+    "categories": [
+      {"id":"food","label":"Food & Drink","spent":58,"limit":100},
+      {"id":"shopping","label":"Shopping","spent":78,"limit":150},
+      {"id":"transport","label":"Transport","spent":0,"limit":null},
+      {"id":"entertainment","label":"Entertainment","spent":0,"limit":null},
+      {"id":"bills","label":"Bills","spent":0,"limit":null},
+      {"id":"other","label":"Other","spent":0,"limit":null}
+    ]
+  },
+  "transaction": {
+    "id":"txn-demo-01","name":"Takeout","amount":18,"category":"food",
+    "occurredAt":"2026-11-19T19:30:00-05:00","planned":false,"source":"demo","reflection":null
+  },
+  "insight": {
+    "id":"takeout-frequency-7d","kind":"frequency","title":"Takeout showed up 4 times this week",
+    "description":"You recorded four takeout purchases in the last seven days.",
+    "evidence":{"count":4,"windowDays":7,"totalAmount":72},
+    "source":"demo","suggestion":"Try a one-meal-at-home challenge."
+  },
+  "report": {
+    "date":"2026-11-21","spentToday":18,"dailyLimit":25,"underDailyLimit":true,
+    "achievement":"Daily spending is within your target","insight":"Your financial check-in is ready",
+    "completedToday":false,"streakDays":2,"availableReward":{"coins":10,"xp":20}
+  }
+}

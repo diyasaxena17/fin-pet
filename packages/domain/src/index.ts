@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { financeSchema, emptyFinance } from './finance';
 import {
   letterSchema, type AppState, type InitializedAppState, type ApiErrorCode,
   type OnboardingInput, type LetterInput, type DecisionInput, type SavingsInput,
@@ -14,7 +15,7 @@ const accountSchema = z.strictObject({
   lastQuestDate: z.iso.date().nullable(), streakDays: integer, demoSeeded: z.boolean(),
 });
 export const storedStateSchema = z.strictObject({
-  version: z.literal(1), account: accountSchema.nullable(),
+  version: z.literal(1), account: accountSchema.nullable(), finance: financeSchema.default(emptyFinance),
   processedRequestIds: z.array(z.uuid()),
   decisions: z.array(z.strictObject({
     requestId: z.uuid(), itemName: z.string(), amountCents: integer.positive(),
@@ -40,7 +41,7 @@ export class DomainError extends Error {
 }
 export const DEFAULT_TIME_ZONE = 'America/Toronto';
 export function emptyStoredState(): StoredState {
-  return { version: 1, account: null, processedRequestIds: [], decisions: [] };
+  return { version: 1, account: null, processedRequestIds: [], decisions: [], finance: emptyFinance() };
 }
 export function localDate(now: Date, timeZone = DEFAULT_TIME_ZONE): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
@@ -147,3 +148,5 @@ export function requireInitialized(state: AppState): InitializedAppState {
   if (!state.initialized) throw new DomainError(404, 'NOT_INITIALIZED', 'Set up Mochi before using this action.');
   return state;
 }
+
+export * from './finance';
