@@ -8,12 +8,23 @@ async (page, hooks = {}) => {
   await page.getByText('DEMO controls · preview seeded progress', {exact:true}).click();
   await page.getByRole('button', {name:'Seed level 2 · 100 XP',exact:true}).click();
   await page.getByText(/One small habit, once a day: \+10 acorns/).waitFor();
+  const readState = async () => (await page.request.get((hooks.apiBase || 'http://127.0.0.1:3000')+'/api/state')).json();
+  const beforeOpen = await readState();
+  await page.goto(web+'/check-in');
+  await page.getByText('No daily target is configured yet.', {exact:true}).waitFor();
+  await page.reload();
+  await page.getByText('No daily target is configured yet.', {exact:true}).waitFor();
+  check(JSON.stringify(await readState()) === JSON.stringify(beforeOpen), 'Opening/reloading NFC report awarded a reward');
+  const refresh = page.waitForResponse(r => new URL(r.url()).pathname === '/api/reports/today');
+  await page.getByRole('button', {name:'Refresh report',exact:true}).click();
+  await refresh;
+  check(JSON.stringify(await readState()) === JSON.stringify(beforeOpen), 'Refreshing report mutated state');
   const pending = page.waitForResponse(r => new URL(r.url()).pathname === '/api/check-ins' && r.request().method() === 'POST');
-  await page.getByRole('button', {name:'Complete daily check-in',exact:true}).click();
+  await page.getByRole('button', {name:'Complete check-in · +10 acorns',exact:true}).click();
   const response = await pending;
   check(response.status() === 200, 'Canonical UI check-in failed');
   check((await response.json()).reward.coins === 10, 'Expected one check-in reward');
-  await page.getByText(/Today’s check-in is complete/).waitFor();
+  await page.getByText('Today’s reward has already been claimed.', {exact:true}).waitFor();
   const result = await page.evaluate(async () => {
     const {httpApi: api} = await import('/src/lib/api.ts');
     const check = (condition, message) => { if (!condition) throw new Error(message); };
@@ -47,10 +58,10 @@ async (page, hooks = {}) => {
     check(finalReport.spentToday === 18 && finalReport.underDailyLimit && finalReport.completedToday, 'Report mismatch');
     check((await api.checkIn({requestId:crypto.randomUUID()})).reward.coins === 0, 'Check-in repeated across UI and adapter');
     return {budget,observedCount:insight.evidence.count,dueReflections:2,lessonRewardOnce:true,
-      reportReadOnly:true,savingsUnchanged:true,voice:after.preferences.voice,canonicalCheckIn:true};
+      reportReadOnly:true,savingsUnchanged:true,voice:after.preferences.voice,canonicalCheckIn:true,nfcReportReadOnly:true};
   });
   await page.reload();
-  await page.getByText('Acorns', {exact:true}).waitFor();
+  await page.getByText('Today’s reward has already been claimed.', {exact:true}).waitFor();
   const mobileFits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   check(mobileFits, 'Mobile dashboard overflows');
   if (hooks.screenshotDir) await page.screenshot({path:hooks.screenshotDir+'/addendum-mobile.png',fullPage:true});

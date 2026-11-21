@@ -68,7 +68,7 @@ class StartupTests(unittest.TestCase):
                 finally:
                     process.terminate()
                     output, _ = process.communicate(timeout=5)
-                self.assertIn(b'http://192.0.2.10:5173/tap?petId=mochi-01', output)
+                self.assertIn(b'http://192.0.2.10:5173/check-in', output)
 
 
 if __name__ == '__main__':

@@ -58,6 +58,27 @@ describe('standalone application journeys', () => {
     expect(feed).toHaveBeenCalledTimes(1);
     expect(await api.getState()).toMatchObject({ wallet: { coins: 40 }, pet: { hunger: 80, mood: 'happy' } });
   });
+  it('opens the check-in report read-only and retries a failed report before claiming once', async () => {
+    const user = userEvent.setup();
+    await api.onboard(onboarding);
+    await api.demoSeed({ xp: 100 });
+    const checkIn = vi.spyOn(api, 'checkIn');
+    const report = api.getDailyReport;
+    vi.spyOn(api, 'getDailyReport').mockImplementation(report).mockRejectedValueOnce(new Error('Report connection interrupted.'));
+    mount('/check-in');
+    await screen.findByText('Report connection interrupted.');
+    expect(checkIn).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Retry report' }));
+    await screen.findByText('No daily target is configured yet.');
+    expect(checkIn).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Complete check-in · +10 acorns' }));
+    await screen.findByText('Today’s reward has already been claimed.');
+    expect(checkIn).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Refresh report' }));
+    await screen.findByText('Today’s reward has already been claimed.');
+    expect(checkIn).toHaveBeenCalledTimes(1);
+    expect(await api.getState()).toMatchObject({ wallet: { coins: 10, xp: 120 } });
+  });
   it('labels and edits the complete saved letter before milestone reveals', async () => {
     const user = userEvent.setup();
     await api.onboard(onboarding);
