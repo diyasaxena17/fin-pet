@@ -158,15 +158,44 @@ void reflection_boundary() {
   apply_finance_action(state, Action::transaction, transaction, timestamp_millis("2026-11-21T12:00:00Z"));
   const Json reflection = {{"requestId", id(102)}, {"transactionId", "txn-" + id(101)}, {"verdict", "worth_it"}};
   const auto boundary = timestamp_millis("2026-11-22T12:00:00Z");
+  const auto unreviewed = state;
+  check(due_reflections(state, boundary - 60000).empty(), "47h59m purchase is not due");
+  check(state == unreviewed, "Due list is read-only");
   check(due_reflections(state, boundary - 86400000).empty(), "24 hours is not due in v2");
   check(due_reflections(state, boundary - 1).empty(), "Before reflection boundary");
   check(due_reflections(state, boundary).size() == 1, "Exact reflection boundary");
   error([&] { apply_reflection(state, reflection, boundary - 1); }, "REFLECTION_NOT_DUE");
+  check(state == unreviewed, "Early reflection error leaves state unchanged");
+  auto missing = reflection; missing["transactionId"] = "missing";
+  error([&] { apply_reflection(state, missing, boundary); }, "NOT_FOUND");
+  check(state == unreviewed, "Missing transaction error leaves state unchanged");
   apply_reflection(state, reflection, boundary);
+  auto expected = unreviewed;
+  expected["finance"]["transactions"][0]["reflection"] =
+    {{"verdict", "worth_it"}, {"reflectedAt", "2026-11-22T12:00:00.000Z"}};
+  check(state == expected, "Only attached reflection changes; account, cents and source are preserved");
+  auto conflicting = reflection; conflicting["verdict"] = "unsure";
+  error([&] { apply_reflection(state, conflicting, boundary); }, "REFLECTION_EXISTS");
+  check(state == expected, "Conflicting verdict leaves original judgement unchanged");
   check(due_reflections(state, boundary).empty() && state["account"]["xp"] == 0, "Reflection grants no reward");
   const auto completed = state["finance"]["transactions"][0]["reflection"];
   apply_reflection(state, reflection, boundary - 86400000);
   check(state["finance"]["transactions"][0]["reflection"] == completed, "Existing v1 review stays stable under the v2 delay");
+  for (const auto* source : std::array{"manual", "demo"}) {
+    for (const auto* verdict : std::array{"worth_it", "unsure", "not_worth_it"}) {
+      auto fixture = unreviewed;
+      fixture["finance"]["transactions"][0]["source"] = source;
+      auto input = reflection; input["verdict"] = verdict;
+      input = validate_input(Action::reflection, input);
+      const auto original_account = fixture["account"];
+      apply_reflection(fixture, input, boundary);
+      const auto& saved = fixture["finance"]["transactions"][0];
+      check(saved["reflection"]["verdict"] == verdict && saved["source"] == source,
+            "All frozen verdicts preserve manual/demo source");
+      check(fixture["account"] == original_account && due_reflections(fixture, boundary).empty(),
+            "All verdicts remove due item without changing goals or wallet");
+    }
+  }
   check(timestamp_millis("2026-11-01T01:00:00+14:00") == timestamp_millis("2026-10-31T11:00:00Z"), "Offset instant");
   for (const auto& [saved, stage] : std::vector<std::pair<double, std::string>>{{49.99, "seedling"}, {50, "sapling"}, {100, "young"}, {150, "mature"}, {200, "thriving"}}) {
     apply_action(state, Action::seed, {{"confirmedSaved", saved}}, today);

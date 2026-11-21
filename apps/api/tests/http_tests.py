@@ -515,6 +515,57 @@ class HttpTests(unittest.TestCase):
         self.restart()
         self.assertEqual(self.server.call('GET', '/api/insights')['insights'], insights)
 
+    def test_reflection_validation_atomicity_sources_and_restart(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        manual = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Book',
+                     'amount': 12, 'category': 'shopping', 'occurredAt': '2026-01-01T12:00:00Z'})['transaction']
+        self.seed_forest()
+        due = api('GET', '/api/reflections/due')['transactions']
+        demo = next(t for t in due if t['source'] == 'demo')
+        before_state = api('GET', '/api/state')
+        before = self.storage_snapshot()
+        review = {'requestId': request_id(), 'transactionId': manual['id'], 'verdict': 'not_worth_it'}
+        for changed in [{'transactionId': 'missing'}, {'transactionId': ''}, {'verdict': 'regret'},
+                        {'verdict': 'invalid'}, {'verdict': None}, {'requestId': 'bad'}, {'extra': True}]:
+            api('POST', '/api/reflections', {**review, **changed}, 404 if changed.get('transactionId') == 'missing' else 400)
+        for field in ['requestId', 'transactionId', 'verdict']:
+            api('POST', '/api/reflections', {k: v for k, v in review.items() if k != field}, 400)
+        api('POST', '/api/reflections?extra=1', review, 400)
+        api('GET', '/api/reflections/due?extra=1', status=400)
+        self.assertEqual(self.storage_snapshot(), before)
+        self.assertEqual(api('GET', '/api/reflections/due')['transactions'], due)
+        self.assertEqual(self.storage_snapshot(), before)
+        # Failed requests did not reserve review's UUID.
+        results = []
+        for transaction in [manual, demo]:
+            body = {**review, 'transactionId': transaction['id']}
+            if transaction['source'] == 'demo':
+                body['requestId'] = request_id()
+            result = api('POST', '/api/reflections', body)
+            self.assertEqual(result['transaction']['source'], transaction['source'])
+            self.assertEqual(result['transaction']['reflection']['verdict'], 'not_worth_it')
+            self.assertEqual(result['state'], before_state)
+            saved = self.storage_snapshot()
+            self.assertEqual(api('POST', '/api/reflections', body), result)
+            api('POST', '/api/reflections', {**body, 'verdict': 'unsure'}, 409)
+            conflict_id = request_id()
+            api('POST', '/api/reflections', {**body, 'requestId': conflict_id, 'verdict': 'unsure'}, 409)
+            self.assertEqual(self.storage_snapshot(), saved)
+            # Same-verdict, fresh-ID replay is a successful no-op under the contract.
+            self.assertEqual(api('POST', '/api/reflections', {**body, 'requestId': conflict_id}), result)
+            results.append((body, result['transaction']))
+        remaining = api('GET', '/api/reflections/due')['transactions']
+        self.assertFalse({manual['id'], demo['id']} & {t['id'] for t in remaining})
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), before_state)
+        for body, transaction in results:
+            self.assertEqual(api('POST', '/api/reflections', body)['transaction'], transaction)
+        manual_rows = api('GET', '/api/transactions?month=2026-01')['transactions']
+        self.assertIn(results[0][1], manual_rows)
+        self.assertEqual(api('GET', '/api/reflections/due')['transactions'], remaining)
+
     def test_reflections_require_48_hours_and_preserve_existing_reviews(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)

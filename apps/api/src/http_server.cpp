@@ -16,7 +16,7 @@ void no_query(const httplib::Request& req) {
 void mutate(Database& db, Action action, const httplib::Request& req, httplib::Response& res) {
   Json input;
   try {
-    if (action == Action::budget || action == Action::transaction) no_query(req);
+    if (action == Action::budget || action == Action::transaction || action == Action::reflection) no_query(req);
     const auto content_type = req.get_header_value("Content-Type");
     if (!std::regex_match(content_type, std::regex(R"(^application/json(\s*;.*)?$)", std::regex::icase)))
       throw ApiError(400, "INVALID_REQUEST", "Send a JSON request body.");

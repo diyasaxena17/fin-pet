@@ -231,6 +231,46 @@ records at the same time yield identical cards. Cards can change as records ente
 or leave the trailing lookback; elapsed windows use timestamp instants rather than
 calendar days, so DST does not change their duration.
 
+## Worth-It reflections (BE-04)
+
+`GET /api/reflections/due` returns `{ "transactions": [...] }` containing unreviewed
+purchases whose timestamp is at least 48 elapsed hours old. The boundary is
+inclusive and uses timestamp instants, independent of calendar days and DST.
+No records returns an empty array; an account is required.
+
+`POST /api/reflections` accepts exactly `requestId`, `transactionId` and `verdict`
+in a JSON body, without query parameters. As confirmed for this ticket, frozen
+verdicts remain `worth_it`, `unsure`, and `not_worth_it`; `regret` is not an API
+alias. The saved transaction contains `reflection: { verdict, reflectedAt }` and
+keeps its original `manual` or `demo` source. The response is `{ transaction,
+state }`. These are the user's judgements; the API draws no psychological
+conclusions and changes no savings, rewards, goals, pet or letter state.
+
+```sh
+curl -s http://localhost:3000/api/reflections/due
+# Replace the transactionId with an eligible transaction's actual ID.
+curl -s http://localhost:3000/api/reflections -H 'Content-Type: application/json' -d '{"requestId":"55555555-5555-4555-8555-555555555555","transactionId":"txn-44444444-4444-4444-8444-444444444444","verdict":"not_worth_it"}'
+```
+
+After saving, the purchase disappears from due results and its reflection remains
+visible in transaction reads after restart. Successful UUID retries are idempotent.
+A fresh UUID with the same verdict succeeds without changing the saved timestamp;
+a different verdict fails. Pre-existing completed reviews remain valid even if
+they were saved under the older delay.
+
+| Failure | HTTP / code |
+| --- | --- |
+| Missing fields, invalid UUID/verdict/JSON, unexpected fields or query parameters | 400 `INVALID_REQUEST` |
+| Transaction does not exist | 404 `NOT_FOUND` |
+| Account not initialized | 404 `NOT_INITIALIZED` |
+| Purchase younger than 48 hours | 409 `REFLECTION_NOT_DUE` |
+| Fresh UUID attempts to change a saved verdict | 409 `REFLECTION_EXISTS` |
+| Successful UUID reused with conflicting input/operation | 409 `REQUEST_ID_CONFLICT` |
+
+Failed submissions consume no UUID and change no stored state. The reflection and
+successful UUID commit atomically, including rollback on storage failures. Reads
+are side-effect free.
+
 ## SQLite and retries
 
 Each mutation holds an application mutex, executes `BEGIN IMMEDIATE`, loads the
