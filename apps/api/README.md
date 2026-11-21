@@ -187,17 +187,33 @@ demo seed emits no reaction. Gestures emit `greeting`. Account reset retains the
 monotonic sequence but clears the reaction type, so connected pollers do not lose
 their baseline. Replacing the database requires taking a new baseline.
 
-The hardware developer owns GPIO, servo, audio and camera code. An example poller
-prints a new reaction once per observed sequence increase and can be connected
-to that separate driver:
+The hardware developer owns GPIO, servo, audio and camera code. The poller can
+load that existing Python module and call its no-argument `wag_tail()` function
+only on new feed reactions. Sound is explicitly opt-in via `--sound` and requires
+a no-argument `play_happy_sound()`. Module names and `.py` file paths are supported.
+Without a controller, it runs in dry-run mode and prints observed events:
 
 ```sh
-python3 apps/api/examples/poll_device.py http://<LAPTOP_LAN_IP>:3000
+python3 apps/api/examples/poll_device.py http://<LAPTOP_LAN_IP>:3000 --dry-run
+# Once the existing hardware controller is available on the Pi:
+python3 apps/api/examples/poll_device.py http://<LAPTOP_LAN_IP>:3000 \
+  --controller /home/pi/mochi/controller.py --sound
 ```
 
-Poll roughly once per second. Record the first sequence as a baseline without
-animation. React only when a larger sequence arrives; several events between
-polls can coalesce into one animation. GETs do not consume events.
+The first valid snapshot on every boot is a baseline without animation, even
+if it contains an old `feed`. Polls default to once per second. Temporary failures
+retry automatically with exponential delay capped at eight seconds; reconnects
+retain the cursor. Malformed responses do not advance it. Each observed sequence
+is consumed before invoking hardware, so a controller/sound error will not retry
+the same motion. SIGINT/SIGTERM stop cleanly. A per-user file lock prevents a
+second controller process; override `--lock-file` only for isolated tests.
+
+This is at-most-once dispatch, not guaranteed delivery: a crash during actuation
+can omit a wag. The frozen endpoint exposes the latest reaction, not a queue;
+multiple events while disconnected or between polls may coalesce or be superseded.
+Keep the poller online before feeding and avoid concurrent gesture/quest actions
+during the hardware demo. GETs do not consume events. Replacing the database
+rebaselines a decreased sequence rather than replaying its old state.
 
 Phone app: `http://<LAPTOP_LAN_IP>:5173/`.
 NFC tag / QR contents: `http://<LAPTOP_LAN_IP>:5173/tap?petId=mochi-01`.

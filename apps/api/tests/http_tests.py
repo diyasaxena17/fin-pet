@@ -25,10 +25,12 @@ def request_id():
 
 
 class Server:
-    def __init__(self, db_path, demo=True, device=False):
-        with socket.socket() as sock:
-            sock.bind(('127.0.0.1', 0))
-            self.port = sock.getsockname()[1]
+    def __init__(self, db_path, demo=True, device=False, port=None):
+        if port is None:
+            with socket.socket() as sock:
+                sock.bind(('127.0.0.1', 0))
+                port = sock.getsockname()[1]
+        self.port = port
         self.base = f'http://127.0.0.1:{self.port}'
         self.log = tempfile.TemporaryFile()
         self.process = subprocess.Popen([BINARY], stdout=self.log, stderr=self.log, env={
@@ -265,7 +267,8 @@ class HttpTests(unittest.TestCase):
         api('POST', '/api/onboarding', ONBOARD)
         api('POST', '/api/demo/seed', {'coins': 20})
         poller_path = Path(__file__).resolve().parents[1] / 'examples/poll_device.py'
-        poller = subprocess.Popen([sys.executable, str(poller_path), self.server.base],
+        poller = subprocess.Popen([sys.executable, str(poller_path), self.server.base,
+                                   '--lock-file', str(Path(self.directory.name) / 'poller.lock')],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             time.sleep(1.2)  # Let the example take its initial baseline without an event.
@@ -282,6 +285,63 @@ class HttpTests(unittest.TestCase):
         finally:
             poller.terminate()
             poller.communicate(timeout=5)
+
+    def test_controller_calls_once_and_reconnects_after_backend_restart(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        api('POST', '/api/demo/seed', {'coins': 60})
+        api('POST', '/api/feed', {'requestId': request_id(), 'petId': 'mochi-01'})
+        directory = Path(self.directory.name)
+        calls = directory / 'calls.txt'
+        controller = directory / 'fake_controller.py'
+        controller.write_text('import os\n'
+                              'def record(name):\n'
+                              '    with open(os.environ["MOCHI_TEST_CALLS"], "a") as f: f.write(name + "\\n")\n'
+                              'def wag_tail(): record("wag")\n'
+                              'def play_happy_sound(): record("sound")\n')
+        log_path = directory / 'poller.log'
+        poller_path = Path(__file__).resolve().parents[1] / 'examples/poll_device.py'
+
+        def wait_for(predicate, message):
+            for _ in range(150):
+                if predicate():
+                    return
+                time.sleep(.02)
+            self.fail(message + '\n' + log_path.read_text())
+
+        def recorded():
+            return calls.read_text().splitlines() if calls.exists() else []
+
+        with log_path.open('w') as log:
+            process = subprocess.Popen([sys.executable, str(poller_path), self.server.base,
+                                        '--controller', str(controller), '--sound', '--interval', '.05',
+                                        '--timeout', '.1', '--max-retry', '.2',
+                                        '--lock-file', str(directory / 'controller.lock')],
+                                       env={**os.environ, 'MOCHI_TEST_CALLS': str(calls)},
+                                       stdout=log, stderr=log)
+            try:
+                wait_for(lambda: 'Initial baseline: 1' in log_path.read_text(), 'No boot baseline')
+                self.assertEqual(recorded(), [])
+                feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+                api('POST', '/api/feed', feed)
+                wait_for(lambda: recorded() == ['wag', 'sound'], 'Controller was not called')
+                api('POST', '/api/feed', feed)
+                port = self.server.port
+                self.server.close()
+                wait_for(lambda: 'reconnecting' in log_path.read_text(), 'No reconnect attempt')
+                self.assertIsNone(process.poll())
+                self.server = Server(self.db, device=True, port=port)
+                api = self.server.call
+                wait_for(lambda: 'Reconnected to Mochi' in log_path.read_text(), 'Did not reconnect')
+                self.assertEqual(recorded(), ['wag', 'sound'])
+                api('POST', '/api/feed', feed)  # Persisted request ID still cannot repeat a wag.
+                api('POST', '/api/feed', {'requestId': request_id(), 'petId': 'mochi-01'})
+                wait_for(lambda: recorded() == ['wag', 'sound', 'wag', 'sound'], 'No post-reconnect reaction')
+                self.assertEqual(api('GET', '/api/state')['wallet']['coins'], 0)
+            finally:
+                process.terminate()
+                process.wait(timeout=5)
 
 
 if __name__ == '__main__':
