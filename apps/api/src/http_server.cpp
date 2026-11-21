@@ -28,16 +28,20 @@ void mutate(Database& db, Action action, const httplib::Request& req, httplib::R
     return;
   }
   try {
-    const auto day = local_day();
+    std::string day;
     Json reward = {{"coins", 0}, {"xp", 0}};
     const auto stored = db.mutate(input.value("requestId", std::string{}), req.path, input,
       [&](Json& state) {
+        // A queued request may cross midnight while waiting for SQLite/mutex.
+        // Read the local date only once this mutation owns the transaction.
+        day = local_day();
         const auto before = state.at("account");
         apply_action(state, action, input, day);
         if ((action == Action::check_in || action == Action::lesson) && !before.is_null())
           reward = {{"coins", state.at("account").at("coins").get<std::int64_t>() - before.at("coins").get<std::int64_t>()},
                     {"xp", state.at("account").at("xp").get<std::int64_t>() - before.at("xp").get<std::int64_t>()}};
       }, action == Action::reset);
+    if (day.empty()) day = local_day(); // UUID replay skips the transition callback.
     if (action == Action::gesture) reply(res, device_state(stored));
     else if (action == Action::reflection) reply(res, reflection_response(stored, input, day));
     else if (action == Action::lesson) reply(res, lesson_response(stored, input, day, reward));
@@ -70,7 +74,10 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
   server.Post("/api/feed", [&db](const auto& req, auto& res) { mutate(db, Action::feed, req, res); });
   server.Post("/api/quests/complete", [&db](const auto& req, auto& res) { mutate(db, Action::quest, req, res); });
   server.Put("/api/preferences", [&db](const auto& req, auto& res) { mutate(db, Action::preferences, req, res); });
-  server.Get("/api/budgets", [&db](const auto& req, auto& res) { reply(res, budget_summary(db.read(), month_query(req), local_day())); });
+  server.Get("/api/budgets", [&db](const auto& req, auto& res) {
+    const auto month = month_query(req); const auto state = db.read();
+    reply(res, budget_summary(state, month, local_day()));
+  });
   server.Put("/api/budgets", [&db](const auto& req, auto& res) { mutate(db, Action::budget, req, res); });
   server.Get("/api/transactions", [&db](const auto& req, auto& res) { reply(res, {{"transactions", transactions_for(db.read(), month_query(req))}}); });
   server.Post("/api/transactions", [&db](const auto& req, auto& res) { mutate(db, Action::transaction, req, res); });
@@ -79,7 +86,9 @@ void configure_server(httplib::Server& server, Database& db, Options options) {
   server.Post("/api/reflections", [&db](const auto& req, auto& res) { mutate(db, Action::reflection, req, res); });
   server.Get("/api/lessons", [&db](const auto& req, auto& res) { no_query(req); reply(res, {{"lessons", lessons(db.read())}}); });
   server.Post("/api/lessons/answer", [&db](const auto& req, auto& res) { mutate(db, Action::lesson, req, res); });
-  server.Get("/api/reports/today", [&db](const auto& req, auto& res) { no_query(req); reply(res, daily_report(db.read(), local_day())); });
+  server.Get("/api/reports/today", [&db](const auto& req, auto& res) {
+    no_query(req); const auto state = db.read(); reply(res, daily_report(state, local_day()));
+  });
   server.Post("/api/check-ins", [&db](const auto& req, auto& res) { mutate(db, Action::check_in, req, res); });
   if (options.demo_mode) {
     server.Post("/api/demo/seed", [&db](const auto& req, auto& res) { mutate(db, Action::seed, req, res); });

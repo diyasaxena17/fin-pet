@@ -1,6 +1,8 @@
 #include "database.hpp"
 #include "game_logic.hpp"
 #include "engagement.hpp"
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -155,12 +157,16 @@ void reflection_boundary() {
     {"category", "other"}, {"occurredAt", "2026-11-20T12:00:00Z"}});
   apply_finance_action(state, Action::transaction, transaction, timestamp_millis("2026-11-21T12:00:00Z"));
   const Json reflection = {{"requestId", id(102)}, {"transactionId", "txn-" + id(101)}, {"verdict", "worth_it"}};
-  const auto boundary = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto boundary = timestamp_millis("2026-11-22T12:00:00Z");
+  check(due_reflections(state, boundary - 86400000).empty(), "24 hours is not due in v2");
   check(due_reflections(state, boundary - 1).empty(), "Before reflection boundary");
   check(due_reflections(state, boundary).size() == 1, "Exact reflection boundary");
   error([&] { apply_reflection(state, reflection, boundary - 1); }, "REFLECTION_NOT_DUE");
   apply_reflection(state, reflection, boundary);
   check(due_reflections(state, boundary).empty() && state["account"]["xp"] == 0, "Reflection grants no reward");
+  const auto completed = state["finance"]["transactions"][0]["reflection"];
+  apply_reflection(state, reflection, boundary - 86400000);
+  check(state["finance"]["transactions"][0]["reflection"] == completed, "Existing v1 review stays stable under the v2 delay");
   check(timestamp_millis("2026-11-01T01:00:00+14:00") == timestamp_millis("2026-10-31T11:00:00Z"), "Offset instant");
   for (const auto& [saved, stage] : std::vector<std::pair<double, std::string>>{{49.99, "seedling"}, {50, "sapling"}, {100, "young"}, {150, "mature"}, {200, "thriving"}}) {
     apply_action(state, Action::seed, {{"confirmedSaved", saved}}, today);
@@ -168,11 +174,43 @@ void reflection_boundary() {
   }
 }
 
+void insight_windows() {
+  auto state = empty_state(); apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  auto& transactions = state["finance"]["transactions"];
+  for (int i = 0; i < 3; ++i) transactions.push_back({{"id", "cluster-" + std::to_string(i)}, {"name", "Purchase " + std::to_string(i)},
+    {"amountCents", (i + 1) * 100}, {"category", i == 1 ? "entertainment" : "shopping"},
+    {"occurredAt", std::array{"2026-11-21T08:00:00Z", "2026-11-21T09:00:00Z", "2026-11-21T12:00:00Z"}[i]},
+    {"planned", true}, {"source", "manual"}, {"reflection", nullptr}});
+  const auto now = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto before = state;
+  const auto clusters = discretionary_clusters(state, now);
+  check(clusters.size() == 1 && clusters[0]["evidence"]["count"] == 3 && clusters[0]["evidence"]["totalAmount"] == 6, "Exact four-hour cluster and cents total");
+  check(clusters[0]["evidence"]["windowDays"] == 4.0 / 24.0 && state == before, "Existing evidence shape and read-only computation");
+  std::reverse(transactions.begin(), transactions.end());
+  check(discretionary_clusters(state, now) == clusters, "Stable result independent of insertion order");
+  transactions = before["finance"]["transactions"];
+  transactions[0]["occurredAt"] = "2026-11-21T07:59:59.999Z";
+  check(discretionary_clusters(state, now).empty(), "Four hours plus one millisecond is not a cluster");
+  transactions = before["finance"]["transactions"];
+  transactions[0]["source"] = "demo";
+  check(discretionary_clusters(state, now).empty(), "Do not mix manual and demo evidence");
+  transactions = before["finance"]["transactions"];
+  for (auto t : before["finance"]["transactions"]) { t["id"] = "demo-" + t["id"].get<std::string>(); t["source"] = "demo"; transactions.push_back(t); }
+  check(discretionary_clusters(state, now).size() == 2, "Separate manual/demo clusters");
+  for (auto& t : transactions) t["category"] = "bills";
+  check(discretionary_clusters(state, now).empty(), "Do not classify bills as discretionary");
+  transactions = before["finance"]["transactions"];
+  for (auto& t : transactions) { t["name"] = "Takeout"; t["category"] = "food"; t["occurredAt"] = "2026-11-14T12:00:00Z"; }
+  check(spending_insights(state, now)[0]["evidence"]["count"] == 3, "Seven-day frequency boundary included");
+  transactions[0]["occurredAt"] = "2026-11-14T11:59:59.999Z";
+  check(spending_insights(state, now).empty(), "Older than seven days excluded");
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
