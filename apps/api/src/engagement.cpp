@@ -21,9 +21,11 @@ void apply_reflection(Json& state, const Json& input, std::int64_t now_ms) {
     const auto& reflection = t.at("reflection");
     if (!reflection.is_null() && reflection.at("verdict") != input.at("verdict"))
       throw ApiError(409, "REFLECTION_EXISTS", "This transaction has already been reflected on.");
-    if (now_ms - timestamp_millis(t.at("occurredAt")) < 86400000)
-      throw ApiError(409, "REFLECTION_NOT_DUE", "Reflection opens after 24 hours.");
-    if (reflection.is_null()) t["reflection"] = {{"verdict", input.at("verdict")}, {"reflectedAt", iso_utc(now_ms)}};
+    // Completed reviews survive the longer v2 delay unchanged, including a new-ID retry.
+    if (!reflection.is_null()) return;
+    if (now_ms - timestamp_millis(t.at("occurredAt")) < reflection_delay_ms)
+      throw ApiError(409, "REFLECTION_NOT_DUE", "Reflection opens after 48 hours.");
+    t["reflection"] = {{"verdict", input.at("verdict")}, {"reflectedAt", iso_utc(now_ms)}};
     return;
   }
   throw ApiError(404, "NOT_FOUND", "Transaction not found.");
@@ -36,7 +38,7 @@ Json reflection_response(const Json& state, const Json& input, const std::string
 Json due_reflections(const Json& state, std::int64_t now_ms) {
   require_account(state); Json result = Json::array();
   for (const auto& t : state.at("finance").at("transactions"))
-    if (t.at("reflection").is_null() && now_ms - timestamp_millis(t.at("occurredAt")) >= 86400000) result.push_back(transaction_view(t));
+    if (t.at("reflection").is_null() && now_ms - timestamp_millis(t.at("occurredAt")) >= reflection_delay_ms) result.push_back(transaction_view(t));
   return result;
 }
 Json spending_insights(const Json& state, std::int64_t now_ms) {

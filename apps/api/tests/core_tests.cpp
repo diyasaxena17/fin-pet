@@ -155,12 +155,16 @@ void reflection_boundary() {
     {"category", "other"}, {"occurredAt", "2026-11-20T12:00:00Z"}});
   apply_finance_action(state, Action::transaction, transaction, timestamp_millis("2026-11-21T12:00:00Z"));
   const Json reflection = {{"requestId", id(102)}, {"transactionId", "txn-" + id(101)}, {"verdict", "worth_it"}};
-  const auto boundary = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto boundary = timestamp_millis("2026-11-22T12:00:00Z");
+  check(due_reflections(state, boundary - 86400000).empty(), "24 hours is not due in v2");
   check(due_reflections(state, boundary - 1).empty(), "Before reflection boundary");
   check(due_reflections(state, boundary).size() == 1, "Exact reflection boundary");
   error([&] { apply_reflection(state, reflection, boundary - 1); }, "REFLECTION_NOT_DUE");
   apply_reflection(state, reflection, boundary);
   check(due_reflections(state, boundary).empty() && state["account"]["xp"] == 0, "Reflection grants no reward");
+  const auto completed = state["finance"]["transactions"][0]["reflection"];
+  apply_reflection(state, reflection, boundary - 86400000);
+  check(state["finance"]["transactions"][0]["reflection"] == completed, "Existing v1 review stays stable under the v2 delay");
   check(timestamp_millis("2026-11-01T01:00:00+14:00") == timestamp_millis("2026-10-31T11:00:00Z"), "Offset instant");
   for (const auto& [saved, stage] : std::vector<std::pair<double, std::string>>{{49.99, "seedling"}, {50, "sapling"}, {100, "young"}, {150, "mature"}, {200, "thriving"}}) {
     apply_action(state, Action::seed, {{"confirmedSaved", saved}}, today);

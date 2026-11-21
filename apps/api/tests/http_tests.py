@@ -282,6 +282,27 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
         self.assertEqual(self.server.call('GET', '/api/device/state'), device)
 
+    def test_reflections_require_48_hours_and_preserve_existing_reviews(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        transaction = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Book', 'amount': 12,
+            'category': 'shopping', 'occurredAt': (datetime.now(timezone.utc) - timedelta(hours=47)).isoformat(timespec='milliseconds')})['transaction']
+        review = {'requestId': request_id(), 'transactionId': transaction['id'], 'verdict': 'worth_it'}
+        self.assertEqual(api('GET', '/api/reflections/due'), {'transactions': []})
+        error = api('POST', '/api/reflections', review, 409)
+        self.assertIn('48 hours', error['error']['message'])
+        # Reconstruct a review saved by v1 after 24h; v2 must not hide or rewrite it.
+        old_review = {'verdict': 'worth_it', 'reflectedAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')}
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            stored['finance']['transactions'][0]['reflection'] = old_review
+            db.execute('UPDATE app_state SET payload=?', (json.dumps(stored),))
+        result = api('POST', '/api/reflections', review)
+        self.assertEqual(result['transaction']['reflection'], old_review)
+        api('POST', '/api/reflections', {**review, 'requestId': request_id(), 'verdict': 'unsure'}, 409)
+        self.restart()
+        self.assertEqual(self.server.call('POST', '/api/reflections', review)['transaction']['reflection'], old_review)
+
     def test_lessons_reward_once_validate_options_and_rollback_reactions(self):
         self.restart(device=True)
         api = self.server.call
