@@ -1,5 +1,6 @@
 #include "game_logic.hpp"
 #include "finance.hpp"
+#include "engagement.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -146,6 +147,11 @@ Json validate_input(Action action, Json input) {
       if (input.contains("confirmedSaved")) money_cents(input.at("confirmedSaved"), true);
       break;
     case Action::reset: fields(input, {}); break;
+    case Action::reflection:
+      fields(input, {"requestId", "transactionId", "verdict"}); uuid(input.at("requestId"));
+      if (text(input.at("transactionId"), 200, false).empty()) invalid();
+      if (input.at("verdict") != "worth_it" && input.at("verdict") != "unsure" && input.at("verdict") != "not_worth_it") invalid();
+      break;
     case Action::preferences:
       fields(input, {"voice"}); if (input.at("voice") != "cute" && input.at("voice") != "calm") invalid(); break;
     case Action::budget:
@@ -265,6 +271,7 @@ void apply_action(Json& state, Action action, const Json& input, const std::stri
   if (a.is_null()) throw ApiError(404, "NOT_INITIALIZED", "Set up Mochi before using this action.");
   const int before_level = level_for(a.at("xp").get<std::int64_t>());
   switch (action) {
+    case Action::reflection: apply_reflection(state, input, current_millis()); break;
     case Action::preferences: case Action::budget: case Action::transaction:
       apply_finance_action(state, action, input, current_millis()); break;
     case Action::letter: a["letter"] = input.at("letter"); break;

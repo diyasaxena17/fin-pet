@@ -5,7 +5,7 @@
 
 namespace mochi {
 inline constexpr std::int64_t max_safe = 9007199254740991LL;
-enum class Action { onboard, letter, decision, savings, feed, quest, seed, reset, gesture, preferences, budget, transaction };
+enum class Action { onboard, letter, decision, savings, feed, quest, seed, reset, gesture, preferences, budget, transaction, reflection };
 Json validate_input(Action action, Json input);
 std::int64_t money_cents(const Json& value, bool allow_zero = false);
 void apply_action(Json& state, Action action, const Json& input, const std::string& day,

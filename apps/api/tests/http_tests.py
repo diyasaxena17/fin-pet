@@ -1,4 +1,5 @@
 """Real HTTP/process restart tests. Python stdlib only; never use real user data."""
+from datetime import datetime, timedelta, timezone
 import concurrent.futures
 import json
 import os
@@ -199,6 +200,50 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('GET', '/api/state')['preferences'], {'voice': 'calm'})
         self.assertEqual(api('POST', '/api/transactions', transaction)['transaction'], results[0]['transaction'])
         self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
+    def test_insights_and_reflections_are_observed_reward_free_and_persistent(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('GET', '/api/insights', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        self.assertEqual(api('GET', '/api/insights'), {'insights': []})
+        old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(timespec='milliseconds')
+        rows = []
+        for _ in range(3):
+            rows.append(api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Takeout', 'amount': 18,
+                            'category': 'food', 'occurredAt': old})['transaction'])
+        recent = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Book', 'amount': 1,
+                     'category': 'other', 'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})['transaction']
+        before = api('GET', '/api/state')
+        device = api('GET', '/api/device/state')
+        insight = api('GET', '/api/insights')['insights'][0]
+        self.assertEqual(insight['evidence'], {'count': 3, 'windowDays': 7, 'totalAmount': 54})
+        self.assertEqual(insight['source'], 'manual')
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 3)
+        self.assertEqual(api('GET', '/api/state'), before)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        reflection = {'requestId': request_id(), 'transactionId': recent['id'], 'verdict': 'unsure'}
+        failure = api('POST', '/api/reflections', reflection, 409)
+        self.assertEqual(failure['error']['code'], 'REFLECTION_NOT_DUE')
+        reflection['transactionId'] = rows[0]['id']  # Failed ID was not consumed.
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TRIGGER fail_reflection BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
+        api('POST', '/api/reflections', reflection, 500)
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 3)
+        with sqlite3.connect(self.db) as db:
+            db.execute('DROP TRIGGER fail_reflection')
+        result = api('POST', '/api/reflections', reflection)
+        self.assertEqual(result['state'], before)
+        self.assertEqual(result['transaction']['reflection']['verdict'], 'unsure')
+        self.assertEqual(api('POST', '/api/reflections', reflection), result)
+        self.assertEqual(api('POST', '/api/reflections', {**reflection, 'requestId': request_id()}), result)
+        self.assertEqual(len(api('GET', '/api/reflections/due')['transactions']), 2)
+        api('POST', '/api/reflections', {**reflection, 'requestId': request_id(), 'verdict': 'worth_it'}, 409)
+        api('POST', '/api/reflections', {**reflection, 'requestId': request_id(), 'transactionId': 'missing'}, 404)
+        api('GET', '/api/insights?extra=1', status=400)
+        self.restart(device=True)
+        self.assertEqual(self.server.call('POST', '/api/reflections', reflection), result)
+        self.assertEqual(self.server.call('GET', '/api/device/state'), device)
 
     def test_validation_is_atomic(self):
         api = self.server.call
