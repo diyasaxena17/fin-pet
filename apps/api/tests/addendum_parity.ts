@@ -126,6 +126,21 @@ try {
   await compare('GET', '/api/reports/today', 'getDailyReport');
   await mutation('PUT', '/api/budgets', 'updateBudgets', { month, monthlyLimit: 100 });
   await compare('GET', '/api/reports/today', 'getDailyReport');
+  // Integration checks: both native backend and actual FE mock must apply v2 rules.
+  for (let i = 0; i < 3; i++) await mutation('POST', '/api/transactions', 'recordTransaction', {
+    requestId: randomUUID(), name: `Cluster sample ${i}`, amount: i + 1,
+    category: i === 1 ? 'entertainment' : 'shopping',
+    occurredAt: new Date(Date.now() - (3 - i / 2) * 3_600_000).toISOString(),
+  });
+  await compare('GET', '/api/insights', 'getInsights');
+  const notDue = await mutation('POST', '/api/transactions', 'recordTransaction', {
+    requestId: randomUUID(), name: '36-hour review', amount: 1, category: 'food',
+    occurredAt: new Date(Date.now() - 36 * 3_600_000).toISOString(),
+  });
+  await mutation('POST', '/api/reflections', 'reflect', {
+    requestId: randomUUID(), transactionId: notDue.transaction.id, verdict: 'worth_it',
+  });
+  await compare('GET', '/api/reflections/due', 'getDueReflections');
   await mutation('POST', '/api/demo/reset', 'demoReset', {});
   console.log(`C++/FE mock addendum parity: ${tested} requests passed`);
 } finally {

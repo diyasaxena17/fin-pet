@@ -1,5 +1,10 @@
 # Squirrel & Tree v2 backend contract notes
 
+Integration update: the notes below record the original backend-only branch.
+The combined PR #7 now includes the shared 48-hour/clustering rules and petName
+settings. See [combined verification](../../docs/FOREST_INTEGRATION_VERIFICATION.md).
+Hardware reaction and physical-device limits remain unchanged.
+
 The user's pasted Squirrel & Tree v2 prompt is the behavioral requirement for
 `feat/forest-be`. The separately named `DEVELOPMENT_PLAN.md` and
 `API_CONTRACT_ADDENDUM.md` are absent from both this checkout and fetched main.
