@@ -1,39 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { createMockApi } from './mockApi';
+import { createRequestId } from './requestId';
 
-describe('isolated frontend demo', () => {
-  it('walks the frozen reward, savings, letter, and feeding flow', async () => {
+const onboarding = { petName: 'Mochi', goalTitle: 'Emergency fund', goalTarget: 200,
+  letter: { vision: 'My future', why: 'My reasons', reminder: 'Small steps count.' } };
+
+describe('mock contract compatibility', () => {
+  it('walks the same standalone flow as the real API and deduplicates retries', async () => {
     const api = createMockApi();
-    await api.onboard({ name: 'Diya', petName: 'Mochi', goal: { name: 'Weekend away', targetCents: 20000 }, letter: { sections: ['Start', 'Keep going', 'You did it'] } });
-    const skipped = (await api.submitDecision({ choice: 'skip', amountCents: 6000, item: 'Shoes' })).state;
-    expect(skipped.wallet).toEqual({ coins: 60, xp: 20, level: 1 });
-    expect(skipped.savings).toEqual({ potentialCents: 6000, confirmedCents: 0 });
-    const saved = (await api.recordSavings({ amountCents: 5000 })).state;
-    expect(saved.goal.savedCents / saved.goal.targetCents).toBe(0.25);
+    expect(await api.getState()).toEqual({ initialized: false });
+    await api.onboard(onboarding);
+    const decision = { requestId: createRequestId(), itemName: 'Hoodie', amount: 60, decision: 'skip' as const };
+    expect((await api.submitDecision(decision)).wallet).toMatchObject({ coins: 60, xp: 20 });
+    await api.submitDecision(decision);
+    const savings = { requestId: createRequestId(), amount: 50 };
+    const saved = await api.recordSavings(savings);
     expect(saved.letter.revealedSections).toBe(1);
-    const fed = (await api.feedPet({ source: 'nfc' })).state;
-    expect(fed.wallet.coins).toBe(40);
-    expect(fed.pet.reactionSeq).toBe(1);
-    expect((await api.getState()).pet.reactionSeq).toBe(1);
-    expect((await api.demoSeed({ level: 2 })).state.features).toEqual({ quests: true, projection: false });
-    expect((await api.demoSeed({ level: 3 })).state.features).toEqual({ quests: true, projection: true });
-    expect((await api.getState()).pet.reactionSeq).toBe(1);
+    expect(saved.goal).toMatchObject({ progressPercent: 25, potentialSavings: 60, confirmedSaved: 50 });
+    await api.recordSavings(savings);
+    const feed = { requestId: createRequestId(), petId: 'mochi-01' as const };
+    await api.feedPet(feed);
+    const fed = await api.feedPet(feed);
+    expect(fed.wallet).toMatchObject({ coins: 40, xp: 50 });
+    expect(fed.pet).toMatchObject({ hunger: 80, mood: 'happy' });
+    expect((await api.demoSeed({ xp: 250 })).unlockedFeatures).toContain('expandedProjection');
+    expect(await api.demoReset()).toEqual({ initialized: false });
   });
-  it('does not mutate shared fixtures, responses, or another mock session', async () => {
+  it('isolates mock sessions and response objects', async () => {
     const api = createMockApi();
-    const state = await api.getState();
+    const state = await api.onboard(onboarding);
     state.wallet.coins = 999;
-    expect((await api.getState()).wallet.coins).toBe(0);
-    expect((await createMockApi().getState()).wallet.coins).toBe(0);
-    await expect(api.feedPet({ source: 'app' })).rejects.toThrow('20 coins');
+    expect((await api.getState())).toMatchObject({ wallet: { coins: 0 } });
+    expect(await createMockApi().getState()).toEqual({ initialized: false });
+    await expect(api.feedPet({ requestId: createRequestId(), petId: 'mochi-01' })).rejects.toThrow('20 Mochi coins');
   });
-  it('rejects invalid amounts and prevents duplicate quest rewards', async () => {
+  it('validates the same request shapes as the server', async () => {
     const api = createMockApi();
-    await expect(api.recordSavings({ amountCents: -1 })).rejects.toThrow();
-    await api.recordSavings({ amountCents: 5000 });
-    await api.demoSeed({ level: 2 });
-    const first = await api.completeQuest({ questId: 'first-save' });
-    const second = await api.completeQuest({ questId: 'first-save' });
-    expect(second.state.wallet).toEqual(first.state.wallet);
+    await api.onboard(onboarding);
+    await expect(api.recordSavings({ requestId: 'bad', amount: 1 })).rejects.toThrow();
+    await expect(api.recordSavings({ requestId: createRequestId(), amount: 0.001 })).rejects.toThrow();
   });
 });

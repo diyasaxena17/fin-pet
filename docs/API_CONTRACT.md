@@ -1,136 +1,168 @@
-# Mochi API contract v1
+# Mochi — API contract v1, standalone app
 
-This contract was inferred from the provided scaffolding plan; no pre-existing
-contract was available. It is the shared baseline for branch handoff. Proposed
-defaults are listed below so both owners can review them before implementation.
-After handoff, changes require a contract PR to `main` and both owners rebasing.
+This is the active contract, adapted from the supplied frozen v1 proposal for
+Mochi's current standalone application scope. The [original proposal](reference/API_CONTRACT.original.txt)
+is retained for reference. This version supersedes the earlier inferred scaffold
+contract. Future shared changes follow the contract PR process.
 
-Canonical TypeScript exports: `@mochi/contracts` (`packages/contracts/src/index.ts`).
-Canonical read-only fixture: `packages/contracts/fixtures/app-state.json`.
+## Scope decisions
 
-## Wire conventions
+- Mochi runs as a normal mobile-first application with a virtual pet. Feeding
+  works directly in the app; NFC/QR can optionally open the same confirmation.
+- Device state, gesture routes, camera integration, hardware events, and
+  `AppState.device` are removed. No physical device is required.
+- `demoSeeded: boolean` is added to initialized state so the UI can display a
+  persistent DEMO label after seeding. Reset clears it.
+- Reward-bearing decisions, savings, feeds, and quest requests require a UUID
+  `requestId`. Onboarding, letter replacement, demo seed, and reset follow the
+  source schemas without a request ID.
 
-- JSON requests/responses; mutation requests use `Content-Type: application/json`.
-- All monetary amounts are safe integer **cents**, always positive for mutations.
-- `GET /api/state` returns `AppState` directly. Every successful mutation returns
-  `{ "state": AppState }`, status 200. GET and device polling never mutate state.
-- Errors return `{ "error": { "code": "...", "message": "..." } }`.
-- Device response uses `schemaVersion: 1`; field meanings stay stable for QNX.
-- Initial scaffold: reads work; mutation routes return 501. Shapes below specify
-  the backend implementation target, not an already implemented mutation API.
+## Transport and responses
 
-## AppState
+Base URL: `/api`, proxied by Vite to Express at `http://localhost:3000`.
+All mutation requests use `Content-Type: application/json`. This is a single-user,
+local demo without authentication. Use sample personal/letter data.
 
-```ts
-interface AppState {
-  schemaVersion: 1;
-  onboarded: boolean;
-  profile: { name: string; petName: string };
-  goal: { name: string; targetCents: number; savedCents: number };
-  letter: { sections: [string, string, string]; revealedSections: number };
-  wallet: { coins: number; xp: number; level: 1 | 2 | 3 };
-  savings: { potentialCents: number; confirmedCents: number };
-  pet: { mood: 'neutral' | 'happy'; reactionSeq: number };
-  quests: { id: string; title: string; completed: boolean }[];
-  features: { quests: boolean; projection: boolean };
-}
-```
+All successful routes return status **200**. Mutations return `AppState` directly,
+without a `{ state: ... }` wrapper. `GET /api/state` before onboarding returns only
+`{ "initialized": false }`. Other account actions return 404 until initialized.
+Onboarding a second time returns 409; letter replacement is the supported edit.
+`GET /health` is outside `/api` and returns `{ "ok": true }`.
+All responses use `Cache-Control: no-store`.
 
-`revealedSections` is 0–3. Coins, XP, savings, and `reactionSeq` are non-negative
-integers. The initial fixture is not onboarded, has a $200 target, three blank
-letter sections, zero balances, and one incomplete `first-save` quest.
-`goal.savedCents` and `savings.confirmedCents` track the same recorded savings.
+Currency is CAD numbers at the boundary, with at most two decimal places.
+The domain and JSON storage use integer cents. Mutation amounts and goal targets
+range from $0.01 to $1,000,000,000; demo confirmed savings may also be zero.
+Text names are trimmed, nonempty, and at most 200 characters. Each letter part
+may be empty while drafting and has a 4,000-character limit. Original letter
+whitespace and text are preserved. Dates must be real `YYYY-MM-DD` dates.
+Unknown request properties and malformed input are rejected with 400.
 
-## Routes and adapter functions
+## Routes and request types
 
-| Function | Method and route | Request type | Response type |
+| Function | Method and endpoint | Input | Result |
 | --- | --- | --- | --- |
-| — | `GET /health` | none | `HealthResponse`: `{ status: 'ok' }` |
-| `getState` | `GET /api/state` | none | `GetStateResponse`: `AppState` |
-| `onboard` | `POST /api/onboard` | `OnboardRequest` | `OnboardResponse` |
-| `updateLetter` | `PUT /api/letter` | `UpdateLetterRequest` | `UpdateLetterResponse` |
-| `submitDecision` | `POST /api/decisions` | `SubmitDecisionRequest` | `SubmitDecisionResponse` |
-| `recordSavings` | `POST /api/savings` | `RecordSavingsRequest` | `RecordSavingsResponse` |
-| `feedPet` | `POST /api/pet/feed` | `FeedPetRequest` | `FeedPetResponse` |
-| `completeQuest` | `POST /api/quests/complete` | `CompleteQuestRequest` | `CompleteQuestResponse` |
-| `demoSeed` | `POST /api/demo/seed` | `DemoSeedRequest` | `DemoSeedResponse` |
-| — | `GET /api/device/state` | none | `DeviceStateResponse` |
-
-All eight functions are exposed by `MochiApi`. Every named mutation response is
-an alias for `MutationResponse = { state: AppState }`.
+| — | `GET /health` | none | `HealthResponse` |
+| `getState` | `GET /api/state` | none | `AppState` |
+| `onboard` | `POST /api/onboarding` | `OnboardingInput` | `InitializedAppState` |
+| `updateLetter` | `PUT /api/letter` | `LetterInput` | `InitializedAppState` |
+| `submitDecision` | `POST /api/decisions` | `DecisionInput` | `InitializedAppState` |
+| `recordSavings` | `POST /api/savings` | `SavingsInput` | `InitializedAppState` |
+| `feedPet` | `POST /api/feed` | `FeedInput` | `InitializedAppState` |
+| `completeQuest` | `POST /api/quests/complete` | `QuestInput` | `InitializedAppState` |
+| `demoSeed` | `POST /api/demo/seed` | `DemoSeedInput` | `InitializedAppState` |
+| `demoReset` | `POST /api/demo/reset` | `{}` | `{ initialized: false }` |
 
 ```ts
-interface OnboardRequest {
-  name: string;
+type OnboardingInput = {
   petName: string;
-  goal: { name: string; targetCents: number };
-  letter: { sections: [string, string, string] };
-}
-interface UpdateLetterRequest { sections: [string, string, string] }
-interface SubmitDecisionRequest {
-  choice: 'skip' | 'buy'; amountCents: number; item: string;
-}
-interface RecordSavingsRequest { amountCents: number }
-interface FeedPetRequest { source: 'app' | 'nfc' | 'qr' }
-interface CompleteQuestRequest { questId: string }
-interface DemoSeedRequest { level: 1 | 2 | 3 }
+  goalTitle: string;
+  goalTarget: number; // CAD
+  goalDate?: string;
+  letter: { vision: string; why: string; reminder: string };
+};
+type LetterInput = { letter: { vision: string; why: string; reminder: string } };
+type DecisionInput = {
+  requestId: string; itemName: string; amount: number; decision: 'skip' | 'buy';
+};
+type SavingsInput = { requestId: string; amount: number };
+type FeedInput = { requestId: string; petId: 'mochi-01' };
+type QuestInput = { requestId: string; questId: 'daily-check-in' };
+type DemoSeedInput = { xp?: 0 | 100 | 250; confirmedSaved?: number; coins?: number };
 ```
 
-Profile/goal names must be nonempty after trimming; letter sections must contain
-exactly three strings (empty text is allowed while drafting). Onboarding starts
-a fresh demo state. The live backend must validate requests before mutation.
+Demo seed/reset are registered only when `DEMO_MODE=true`; otherwise they return
+404. Seeding requires onboarding, preserves unspecified values, sets DEMO state,
+and grants no earned activity. Demo coins must be an integer from 0 to 1,000,000.
+Reset clears the account, decisions, and request-ID history. Production builds
+show the DEMO label when seeded; developer-only seed/reset controls are available
+in the Vite dev app.
 
-## Demo behavior
-
-- Skip: add `floor(amountCents / 100)` coins, 20 XP, and `amountCents` potential
-  savings. Buy: no reward or savings change. Neither confirms any savings.
-- Record savings: add the amount to confirmed savings and goal progress. Keep
-  potential savings separate. Do not grant extra coins or XP.
-- Letter sections reveal at 25%, 50%, and 100% of confirmed goal progress.
-- Feed: require at least 20 coins, subtract 20, set mood `happy`, increment
-  `reactionSeq` exactly once. Opening `/tap` is not a feed action.
-- Levels: 1 below 100 XP, 2 from 100 XP, 3 from 300 XP. Quests unlock at level 2;
-  projection unlocks at level 3. Features derive from XP/level.
-- `first-save` quest: available at level 2 with positive confirmed savings;
-  completion grants 10 coins/20 XP once. Repeated completion returns unchanged
-  state without duplicate rewards.
-- Demo seed: set XP to 0/100/300 for level 1/2/3, preserve other progress and
-  `reactionSeq`; reject with 403 when `DEMO_MODE=false`.
-
-The $60 skip, $50 actual savings, and 20-coin feed are required by the supplied
-plan. Cents representation, other reveal thresholds, XP thresholds, quest
-reward, routes, and envelope names are scaffold assumptions to review.
-
-## Stable device response
+## Initialized state example
 
 ```json
 {
-  "schemaVersion": 1,
-  "petName": "Mochi",
-  "level": 1,
-  "mood": "neutral",
-  "reactionSeq": 0
+  "initialized": true,
+  "pet": { "id": "mochi-01", "name": "Mochi", "hunger": 50, "mood": "neutral" },
+  "wallet": { "coins": 0, "xp": 0, "level": 1, "nextLevelXp": 100 },
+  "goal": { "title": "Emergency fund", "targetAmount": 200, "confirmedSaved": 0, "potentialSavings": 0, "progressPercent": 0, "goalDate": null },
+  "letter": { "vision": "I want my future self to feel secure.", "why": "I want more room to choose.", "reminder": "Small steps count.", "revealedSections": 0 },
+  "unlockedFeatures": ["spending", "goal", "feed", "basicProjection", "letter"],
+  "quest": { "id": "daily-check-in", "available": false, "completedToday": false, "streakDays": 0 },
+  "demoSeeded": false
 }
 ```
 
-`mood` is `neutral | happy`; `level` is `1 | 2 | 3`. QNX records the first
-observed sequence as a baseline without reacting, and wags once when it observes
-a strictly larger sequence. The next identical response causes no wag. GETs
-never consume events or change the sequence. Persist the sequence across API
-restarts. Multiple feed actions between polls may be coalesced into one wag.
+The canonical root exports and Zod request schemas are in `@mochi/contracts`.
+The sample fixture is recursively frozen; `createAppState()` returns an isolated
+initialized sample. Actual fresh API/mock sessions start uninitialized.
+
+`wallet.level` is 1, 2, or 3; `nextLevelXp` is 100, 250, or null respectively.
+`goal.progressPercent` is capped at 100; confirmed savings may exceed the target.
+Pet `hunger` follows the source contract's naming but measures fullness: it
+starts at 50 and rises when fed. Mood is `neutral` or `happy`. There is no
+negative pet penalty, automatic hunger decay, or hardware reaction counter.
+
+## Game rules
+
+- Skip: add `min(ceil(amount), 100)` coins, 20 XP, and the CAD amount to potential
+  savings. Buy: persist the decision with no reward or savings change.
+- Savings: add the CAD amount to confirmed savings and grant 30 XP once per ID.
+  All confirmed amounts are self-reported; Mochi does not move money.
+- Letter reveals: 0 below 25%, 1 at 25%, 2 at 50%, and 3 at 100%, using only
+  confirmed savings divided by target. Authors can view/edit all original text.
+- Feed: require 20 coins, deduct 20, raise hunger/fullness by 30 up to 100, and
+  set mood to happy. XP is unchanged. Page opens, GETs, and cancels do not feed.
+- Levels: XP 0–99 is level 1, 100–249 is level 2, 250+ is level 3.
+- Base unlocks: `spending`, `goal`, `feed`, `basicProjection`, `letter`. Level 2
+  adds `dailyQuest` and `streak`. Level 3 adds `expandedProjection`.
+- Quest: a successful daily check-in grants 10 coins and 20 XP. Repeated
+  completion that local day returns unchanged state, even with a different ID.
+  Quests require level 2. Day boundaries use `DEMO_TIME_ZONE`, default
+  `America/Toronto`, independent of the host time zone. Streaks persist across
+  restarts and continue on consecutive calendar days; a missed day breaks the
+  consecutive streak, without subtracting coins or XP.
+- Projections are pure frontend math and never mutate app state. Basic preview
+  is available at level 1. The level-3 simulator supports weekly/monthly
+  contributions, years, and an explicitly illustrative annual rate (default 0%).
+
+## Idempotency, atomicity, and persistence
+
+UUIDs are global to one account. Retrying a successful action ID returns the
+**current** state without repeating the action. Failed validation, unavailable
+quests, insufficient coins, and failed writes do not consume an ID. The client
+retains an ID for retries of the same pending operation within the current app
+session. It never automatically retries mutations. Reloading starts a new client
+session; callers retrying outside it must retain their original ID.
+
+`@mochi/domain` contains the shared pure rules used by API and mock. The API
+serializes read/modify/write operations and saves the state, IDs, and decision
+history together to `DATA_FILE`, resolved relative to the workspace root. It
+writes a flushed temporary file and renames it before publishing in-memory state.
+A failed save returns 500 and leaves the previous state intact. Corrupt or
+incompatible files fail startup rather than being silently replaced.
+
+Run one API process per data file. This local JSON repository is not a
+multi-process database. The mock uses the same rules and validation but stores
+only session memory; it resets on reload. Runtime state and secrets stay out of
+Git. Existing scaffold fixtures are not persisted user-data migrations.
 
 ## Errors
 
+```json
+{ "error": { "code": "INSUFFICIENT_COINS", "message": "You need 20 Mochi coins to feed your pet." } }
+```
+
 | Status | Code | Meaning |
 | --- | --- | --- |
-| 400 | `INVALID_REQUEST` | Malformed JSON or invalid mutation data |
-| 404 | `NOT_FOUND` | Unknown route |
-| 409 | `INSUFFICIENT_COINS` | Cannot afford a feed |
-| 409 | `QUEST_UNAVAILABLE` | Locked or unknown quest |
-| 403 | `DEMO_DISABLED` | Demo seed requested outside demo mode |
-| 501 | `NOT_IMPLEMENTED` | Reserved mutation in initial scaffold |
-| 500 | `INTERNAL_ERROR` | Unexposed internal failure |
+| 400 | `INVALID_REQUEST` | Invalid schema, unknown properties, malformed or oversized JSON |
+| 404 | `NOT_INITIALIZED` | Account action before onboarding |
+| 404 | `NOT_FOUND` | Unknown/removed route or unavailable demo endpoint |
+| 409 | `ALREADY_INITIALIZED` | Duplicate onboarding |
+| 409 | `INSUFFICIENT_COINS` | Cannot afford feed; no mutation |
+| 409 | `QUEST_UNAVAILABLE` | Quest requires level 2 |
+| 409 | `LIMIT_EXCEEDED` | Balance would exceed safe integer storage |
+| 500 | `INTERNAL_ERROR` | Save/internal error; retry with the same request ID |
 
-The mock uses rejected Errors for domain validation and is deliberately
-session-only. Live HTTP errors are exposed as `ApiError` with status and code.
-Neither adapter retries mutations automatically.
+The HTTP adapter exposes failures as `ApiError` with status and code. The mock
+uses Zod errors for invalid input and `DomainError` for game-rule failures.

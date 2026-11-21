@@ -18,7 +18,8 @@ Record results or explain why a check is not applicable. Check boxes only after 
 - [ ] Affected desktop and mobile user journeys were exercised.
 - [ ] Savings, rewards, and letter progress were checked where affected.
 - [ ] Reload/restart persistence was verified where affected.
-- [ ] NFC/QR confirmation and QNX reaction behavior were checked on hardware where affected.
+- [ ] In-app feeding confirmation and replay protection were checked where affected.
+- [ ] Optional NFC/QR links were checked on a physical phone if changed.
 
 Evidence, remaining implementation gaps, and checks not run:
 

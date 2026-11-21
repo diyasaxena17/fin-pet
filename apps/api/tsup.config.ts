@@ -5,6 +5,6 @@ export default defineConfig({
   format: ['esm'],
   platform: 'node',
   target: 'node22',
-  noExternal: ['@mochi/contracts'],
+  noExternal: ['@mochi/contracts', '@mochi/domain'],
   clean: true,
 });

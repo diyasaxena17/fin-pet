@@ -20,6 +20,9 @@ importers:
       '@mochi/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@mochi/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       dotenv:
         specifier: ^17.0.0
         version: 17.4.2
@@ -54,6 +57,9 @@ importers:
       '@mochi/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@mochi/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       react:
         specifier: ^19.0.0
         version: 19.3.1
@@ -99,6 +105,23 @@ importers:
         version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(tsx@4.23.15)
 
   packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.7
+    devDependencies:
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.33.0)(tsx@4.23.15)
+
+  packages/domain:
+    dependencies:
+      '@mochi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.7
     devDependencies:
       vitest:
         specifier: ^3.2.0

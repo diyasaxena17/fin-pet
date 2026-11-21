@@ -1,60 +1,50 @@
-# Integration smoke test
+# Standalone app integration smoke test
 
-Check items only after observing them. A responsive browser viewport is useful
-layout QA but does not count as a physical phone, NFC, QR, or QNX test.
+Run `pnpm install --frozen-lockfile` and `pnpm check`, then start `pnpm dev:api`
+and `pnpm dev:web` in separate terminals. Keep `VITE_USE_MOCK=false`. Use a
+throwaway `DATA_FILE` for integration testing so existing progress stays intact.
 
-## Scaffold checks
+## Browser and API
 
-```sh
-pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-Start API and web in separate terminals. Keep `VITE_USE_MOCK=false` initially.
-
-```sh
-pnpm dev:api
-```
-
-```sh
-pnpm dev:web
-```
-
-- [ ] Laptop: `http://localhost:3000/health` returns `{ "status": "ok" }`.
-- [ ] Laptop: `/api/state` returns the shared fixture.
-- [ ] Laptop: `http://localhost:5173/api/state` returns the same response via proxy.
-- [ ] Laptop: dashboard renders fixture balances; `/onboarding`, `/tap`, and
-  `/future-me` load directly and after refresh.
-- [ ] Phone: same Wi-Fi, open `http://<laptop-ip>:3000/health`.
-- [ ] Phone: open `http://<laptop-ip>:5173`, confirm state loads through proxy.
-- [ ] QNX: same reachable network, poll `http://<laptop-ip>:3000/api/device/state`.
-- [ ] Write the **actual** `http://<laptop-ip>:5173/tap` URL to NFC / QR and scan
-  on a physical phone. Confirm the route opens early, before feature work.
-
-On macOS, find the active Wi-Fi interface with `networksetup -listallhardwareports`,
-then use `ipconfig getifaddr en0` (replace `en0` if necessary). On Linux, use
-`hostname -I`. Binding `0.0.0.0` allows LAN access; phone firewalls or Wi-Fi client
-isolation can still block it. Keep the same IP in the tag/code and use `http`.
-
-## Full implementation acceptance
-
-These require backend mutations/persistence and frontend interactions. They are
-not implemented by the scaffold. The matching mock arithmetic is covered by
-`apps/web/src/lib/mockApi.test.ts`.
-
-- [ ] Turn mock mode off; restart Vite after editing root `.env`.
-- [ ] Onboard with a $200 goal and three-part letter.
+- [ ] `/health` returns `{ "ok": true }`.
+- [ ] A fresh `/api/state` returns `{ "initialized": false }`; opening the app
+  launches onboarding.
+- [ ] Onboard with a $200 goal and three original letter parts; dashboard loads.
 - [ ] Skip a $60 item: 60 coins, 20 XP, $60 potential savings, $0 confirmed.
-- [ ] Log $50 saved: 25% goal, first letter section revealed.
-- [ ] Scan NFC/QR `/tap`, then explicitly confirm feed: 40 coins and one
-  `reactionSeq` increment. Cancel/open/refresh must not feed.
-- [ ] QNX observes a higher sequence and wags once; repeated polls do not wag.
-- [ ] Restart API, reopen phone dashboard, confirm balances, letter progress,
-  and reaction sequence persist; QNX does not replay an old reaction.
-- [ ] With `DEMO_MODE=true`, seed level 2 then 3; check quest/projection gating.
-- [ ] With `DEMO_MODE=false`, seed endpoint returns 403.
+- [ ] Log $50 actually saved: 50 XP total, 25% goal, first original section revealed.
+- [ ] Open `/tap?petId=mochi-01` directly or through app navigation. Opening and
+  refreshing must not spend coins. Confirm once: 40 coins, fullness 80, happy pet.
+- [ ] Repeat a decision/savings/feed UUID: current state is returned with no
+  duplicated reward, savings, or feed cost.
+- [ ] Try an API feed with fewer than 20 coins: 409 and no state change.
+- [ ] Edit the full original letter while milestone reveals remain gated.
+- [ ] Demo-seed 100 XP, see the DEMO label and daily quest. Repeated same-day
+  completion gives only one reward, even with a fresh request ID.
+- [ ] Seed 250 XP: expanded simulator appears. Basic projection remains available
+  at level 1; projection changes never write app state.
+- [ ] Restart the backend with the same file and reload. Goal, letter, pet,
+  balances, quest streak, and request deduplication remain intact.
+- [ ] With `DEMO_MODE=false`, seed and reset return 404.
+- [ ] Demo reset clears state and returns the app to onboarding.
+- [ ] Invalid amounts/UUIDs/JSON return 400. Duplicate onboarding returns 409.
+- [ ] Removed `/api/device/state` and `/api/device/gesture` routes return 404.
+- [ ] All routes fit desktop and narrow mobile viewports, with clear loading,
+  empty, error, confirmation, and success behavior.
 
-For isolated frontend work set `VITE_USE_MOCK=true`. Its state lives in memory,
-resets on reload, and cannot drive the physical QNX device.
+## Physical phone and optional shortcuts
+
+These require an actual phone; browser viewport emulation does not complete them.
+
+- [ ] On the same Wi-Fi, open `http://<laptop-ip>:3000/health` from the phone.
+- [ ] Open `http://<laptop-ip>:5173` and complete the normal in-app feeding flow.
+- [ ] If using NFC/QR, encode `http://<laptop-ip>:5173/tap?petId=mochi-01`, scan
+  it, and verify the confirmation appears without spending coins automatically.
+
+On macOS find the Wi-Fi interface with `networksetup -listallhardwareports`, then
+use `ipconfig getifaddr en0` (adjust the interface if needed). On Linux use
+`hostname -I`. Network isolation/firewalls may block access despite a 0.0.0.0
+binding. Request IDs use browser `crypto.getRandomValues` so LAN HTTP does not
+require `crypto.randomUUID`, which is restricted to secure contexts.
+
+For isolated frontend work, `VITE_USE_MOCK=true` uses the same validation/rules
+but session memory only. It does not demonstrate restart persistence.

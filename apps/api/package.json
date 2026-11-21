@@ -10,6 +10,19 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": { "@mochi/contracts": "workspace:*", "dotenv": "^17.0.0", "express": "^5.1.0", "zod": "^4.0.0" },
-  "devDependencies": { "@types/express": "^5.0.0", "@types/supertest": "^6.0.0", "supertest": "^7.1.0", "tsup": "^8.5.0", "tsx": "^4.20.0", "vitest": "^3.2.0" }
+  "dependencies": {
+    "@mochi/contracts": "workspace:*",
+    "dotenv": "^17.0.0",
+    "express": "^5.1.0",
+    "zod": "^4.0.0",
+    "@mochi/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/supertest": "^6.0.0",
+    "supertest": "^7.1.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.0",
+    "vitest": "^3.2.0"
+  }
 }

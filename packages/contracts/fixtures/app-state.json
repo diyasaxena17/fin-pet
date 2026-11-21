@@ -1,12 +1,10 @@
 {
-  "schemaVersion": 1,
-  "onboarded": false,
-  "profile": { "name": "", "petName": "Mochi" },
-  "goal": { "name": "My first savings goal", "targetCents": 20000, "savedCents": 0 },
-  "letter": { "sections": ["", "", ""], "revealedSections": 0 },
-  "wallet": { "coins": 0, "xp": 0, "level": 1 },
-  "savings": { "potentialCents": 0, "confirmedCents": 0 },
-  "pet": { "mood": "neutral", "reactionSeq": 0 },
-  "quests": [{ "id": "first-save", "title": "Log your first savings", "completed": false }],
-  "features": { "quests": false, "projection": false }
+  "initialized": true,
+  "pet": { "id": "mochi-01", "name": "Mochi", "hunger": 50, "mood": "neutral" },
+  "wallet": { "coins": 0, "xp": 0, "level": 1, "nextLevelXp": 100 },
+  "goal": { "title": "Emergency fund", "targetAmount": 200, "confirmedSaved": 0, "potentialSavings": 0, "progressPercent": 0, "goalDate": null },
+  "letter": { "vision": "I want my future self to feel secure.", "why": "I want more room to choose.", "reminder": "Small steps count.", "revealedSections": 0 },
+  "unlockedFeatures": ["spending", "goal", "feed", "basicProjection", "letter"],
+  "quest": { "id": "daily-check-in", "available": false, "completedToday": false, "streakDays": 0 },
+  "demoSeeded": false
 }

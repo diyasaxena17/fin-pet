@@ -1,0 +1,127 @@
+Mochi — Frozen API Contract v1
+Base URL: /api (Vite dev proxy forwards to Express localhost:3000)
+Content type: application/json
+Currency: CAD numbers at API boundary; server stores cents internally.
+User model: Single demo user; no auth in hackathon local-only prototype.
+Routes
+Method	Endpoint	Body	Result
+GET	/health	—	{ "ok": true } (outside /api)
+GET	/api/state	—	AppState
+POST	/api/onboarding	OnboardingInput	AppState
+PUT	/api/letter	LetterInput	AppState
+POST	/api/decisions	DecisionInput	AppState
+POST	/api/savings	SavingsInput	AppState
+POST	/api/feed	FeedInput	AppState
+POST	/api/quests/complete	QuestInput	AppState
+GET	/api/device/state	—	DeviceState
+POST	/api/device/gesture	GestureInput	{ "accepted": true }
+POST	/api/demo/seed	DemoSeedInput	AppState; only DEMO_MODE=true
+POST	/api/demo/reset	{}	AppState; only DEMO_MODE=true
+
+
+Responses: success 200 or 201; malformed request 400; insufficient coins 409; not initialized 404; unrecognized endpoint 404; unavailable demo endpoints 404. Error shape { "error": { "code": "INSUFFICIENT_COINS", "message": "You need 20 Mochi coins to feed your pet." } }.
+
+Idempotency: All action requests contain requestId (UUID string). Retrying the same ID returns current state without re-awarding coins or replaying a reaction. reactionSeq is integer monotonic and increments for events that should animate on QNX.
+Request schemas and examples
+export type OnboardingInput = {
+  petName: string;
+  goalTitle: string;
+  goalTarget: number;  // CAD, >0
+  goalDate?: string;   // YYYY-MM-DD
+  letter: {
+    vision: string;
+    why: string;
+    reminder: string;
+  };
+};
+
+export type LetterInput = {
+  letter: { vision: string; why: string; reminder: string };
+};
+
+export type DecisionInput = {
+  requestId: string;
+  itemName: string;
+  amount: number;      // CAD, >0
+  decision: "skip" | "buy";
+};
+
+export type SavingsInput = {
+  requestId: string;
+  amount: number;      // actual money moved, self-reported
+};
+
+export type FeedInput = {
+  requestId: string;
+  petId: "mochi-01";
+};
+
+export type QuestInput = {
+  requestId: string;
+  questId: "daily-check-in";
+};
+
+export type GestureInput = {
+  requestId: string;
+  gesture: "open_palm";
+};
+
+export type DemoSeedInput = {
+  xp?: 0 | 100 | 250;
+  confirmedSaved?: number;
+  coins?: number;
+};
+AppState example
+{
+  "initialized": true,
+  "pet": { "id": "mochi-01", "name": "Mochi", "hunger": 80, "mood": "happy" },
+  "wallet": { "coins": 40, "xp": 20, "level": 1, "nextLevelXp": 100 },
+  "goal": {
+    "title": "Emergency fund",
+    "targetAmount": 200,
+    "confirmedSaved": 50,
+    "potentialSavings": 60,
+    "progressPercent": 25,
+    "goalDate": null
+  },
+  "letter": {
+    "vision": "I want my future self to feel secure.",
+    "why": "I don't want money stress to dictate my choices.",
+    "reminder": "Small steps count.",
+    "revealedSections": 1
+  },
+  "unlockedFeatures": ["spending", "goal", "feed", "basicProjection", "letter"],
+  "quest": { "id": "daily-check-in", "available": false, "completedToday": false, "streakDays": 0 },
+  "device": { "petId": "mochi-01", "mood": "happy", "hunger": 80, "reactionSeq": 2, "reactionType": "feed" }
+}
+PUT /api/letter updates the author's original letter; reveal thresholds stay based on goal progress. The author can always view their full writing.
+
+GET /api/state before onboarding returns { "initialized": false } to launch onboarding. POST /api/onboarding initializes account; calling twice should return 409 or support an explicitly documented edit pathway.
+DeviceState shape (QNX-only, no letter content)
+{
+  "petId": "mochi-01",
+  "mood": "happy",
+  "hunger": 80,
+  "reactionSeq": 2,
+  "reactionType": "feed"
+}
+reactionType ∈ "none" | "feed" | "level_up" | "greeting".
+QNX polls once per second; on initial boot, it records first reactionSeq without replaying old reactions. On subsequent increases, it plays appropriate animation once (if seq jumps, newest event only is acceptable for MVP).
+Fixed game logic
+- Skip: coins += min(ceil(amount), 100), XP += 20, potentialSavings += amount.
+- Buy: store decision, no change to coins, XP, or savings.
+- Savings: confirmedSaved += amount, XP += 30 (grant only once per request ID).
+- On a level threshold crossed during a successful XP action, emit one reactionType="level_up" event unless another more immediate event supersedes it.
+- Feed: requires coins >=20; coins -=20; hunger =min(100, hunger+30); reactionSeq += 1; reactionType="feed".
+- Daily quest: once daily, XP +=20, coins +=10.
+- Levels: 1 if XP<100, 2 if 100<=XP<250, 3 if XP>=250. Server derives unlocks.
+- Letter: revealedSections = 0 under 25%, 1 at 25%, 2 at 50%, 3 at 100%, computed only from confirmedSaved / goalTarget.
+- Basic projection is available at Level 1; expanded simulator at Level 3. Projection is frontend pure math; does not mutate state.
+- Demo seed is not a real earned financial activity; show a DEMO label in UI when activated.
+Device/gesture behavior
+QNX camera inference is local. POST /api/device/gesture is optional for telemetry/UI, not required for standalone tail-greeting. Gesture event must not mutate coins or savings. Rate-limit open-palm notifications to avoid noisy events; at most one greeting per few seconds.
+NFC URLs
+Write a phone-accessible URL to the NFC tag:
+http://<laptop-LAN-ip>:5173/tap?petId=mochi-01 (use an HTTPS public URL only if safely configured).
+
+The GET page renders a confirmation; frontend calls POST /api/feed only on a confirmed user action. QR fallback identical URL. Test the physical phone early; do not assume Web NFC APIs are available in every browser.

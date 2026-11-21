@@ -8,7 +8,8 @@ The shared scaffold is organized into five focused commits on `chore/repo-setup`
 4. `feat(web): scaffold React pages and typed live and mock adapters`
 5. `chore: add CI and document scaffold handoff`
 
-Further setup and PRD/check improvements are committed on `chore/repo-setup`.
+Further setup, PRD/check improvements, and the standalone contract implementation
+are committed on `chore/repo-setup`.
 After accepting the full setup branch, advance `main` and base both implementation
 branches on that same accepted tip before feature work begins.
 Find the proposed setup SHA with `git rev-parse chore/repo-setup`. Both developers
@@ -46,6 +47,7 @@ Use `git switch feat/web` or `git switch feat/api` for an existing local branch.
 | `apps/api/**` | Backend |
 | Root `pnpm-lock.yaml` | Backend; coordinate all dependency changes |
 | `packages/contracts/**` | Frozen; focused contract PR to `main` |
+| `packages/domain/**` | Shared API/mock rules; focused contract PR to `main` |
 | Root configuration | Frozen; focused contract PR to `main` |
 | `docs/API_CONTRACT.md` | Frozen; focused contract PR to `main` |
 
@@ -67,11 +69,11 @@ both developers, and rebase both branches before consuming the change.
 - `pnpm check` runs validator tests, typecheck, Vitest, and builds. CI runs the
   same command on every push and pull request, and validates commit subjects.
 - Complete `.github/pull_request_template.md` with the affected application
-  journey and observed browser/mobile results. Include persistence and device
+  journey and observed browser/mobile results. Include persistence and feeding
   checks when the change affects those flows; explain checks not run.
 - PR acceptance requires compatible request/response shapes and the main demo
   flow once implemented. The PRD's full-stack app acceptance criteria define
-  completion beyond the existing page shells.
+  completion across the working application screens and API.
 - Configure GitHub branch protection/rulesets separately to require `CI / quality`
   and `CI / commit-messages` on `main`. Workflow files and local hooks alone do
   not prevent a maintainer from merging a PR that fails checks. Remote protection
