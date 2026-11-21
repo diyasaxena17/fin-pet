@@ -452,6 +452,116 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
 
+    def test_forest_scenario_and_replays_persist_with_existing_device_contract(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        api('POST', '/api/demo/seed', {'xp': 100})  # Existing level-2 user; V1 gate is preserved.
+        self.restart(device=True)
+        api = self.server.call
+        before = api('GET', '/api/state')
+        report = api('GET', '/api/reports/today')
+        month = report['date'][:7]
+        api('PUT', '/api/preferences', {'voice': 'calm'})
+        api('PUT', '/api/budgets', {'month': month, 'monthlyLimit': 500, 'dailyLimit': 25})
+        purchase = {'requestId': request_id(), 'name': 'Takeout', 'amount': 18, 'category': 'food',
+                    'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')}
+        result = api('POST', '/api/transactions', purchase)
+        self.assertEqual(result['budget']['spentThisMonth'], 18)
+        self.assertEqual(api('GET', '/api/reports/today')['spentToday'], 18)
+        api('POST', '/api/transactions', purchase)
+        self.assertEqual(api('GET', '/api/state')['wallet'], before['wallet'])
+        self.assertEqual(api('GET', '/api/state')['goal'], before['goal'])
+        self.assertEqual(self.seed_forest(), {'seededTransactions': 6})
+        insights = api('GET', '/api/insights')['insights']
+        frequency = next(i for i in insights if i['id'].startswith('frequency-'))
+        self.assertEqual(frequency['source'], 'demo')
+        self.assertEqual(frequency['evidence'], {'count': 3, 'windowDays': 7, 'totalAmount': 54})
+        due = api('GET', '/api/reflections/due')['transactions']
+        review = {'requestId': request_id(), 'transactionId': due[0]['id'], 'verdict': 'worth_it'}
+        reviewed = api('POST', '/api/reflections', review)['transaction']
+        self.assertEqual(api('POST', '/api/reflections', review)['transaction'], reviewed)
+        # Race fresh IDs for each of the two lessons: exactly one award per lesson.
+        lesson_ids = [lesson['id'] for lesson in api('GET', '/api/lessons')['lessons']]
+        self.assertEqual(lesson_ids, ['potential-vs-confirmed', 'budget-target'])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            for lesson_id, option in zip(lesson_ids, ['save', 'limit']):
+                answers = list(pool.map(lambda _: api('POST', '/api/lessons/answer', {
+                    'requestId': request_id(), 'lessonId': lesson_id, 'selectedOptionId': option}), range(6)))
+                self.assertEqual(sum(answer['reward']['coins'] for answer in answers), 5)
+                self.assertEqual(sum(answer['reward']['xp'] for answer in answers), 10)
+        device_before = api('GET', '/api/device/state')
+        # Race the first completion through BOTH routes using the same UUID.
+        check_in = {'requestId': request_id()}
+        def complete(i):
+            if i % 2:
+                return api('POST', '/api/check-ins', check_in)['state']
+            return api('POST', '/api/quests/complete', {**check_in, 'questId': 'daily-check-in'})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            states = list(pool.map(complete, range(8)))
+        self.assertTrue(all(s['wallet']['coins'] == 20 and s['wallet']['xp'] == 140 for s in states))
+        self.assertEqual(api('POST', '/api/check-ins', {'requestId': request_id()})['reward'], {'coins': 0, 'xp': 0})
+        # New device reaction names are blocked by the existing strict poller.
+        self.assertEqual(api('GET', '/api/device/state'), device_before)
+        savings = {'requestId': request_id(), 'amount': 50}
+        saved = api('POST', '/api/savings', savings)
+        self.assertEqual(saved['forest'], {'treeStage': 'sapling', 'growthPercent': 25})
+        self.assertEqual(saved['letter'], {**ONBOARD['letter'], 'revealedSections': 1})
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        final = api('POST', '/api/feed', feed)
+        device = api('GET', '/api/device/state')
+        self.assertEqual(device['reactionSeq'], device_before['reactionSeq'] + 1)
+        self.assertEqual(device['reactionType'], 'feed')
+        self.assertEqual(set(device), {'petId', 'mood', 'hunger', 'reactionSeq', 'reactionType'})
+        final_report = api('GET', '/api/reports/today')
+        self.assertTrue(final_report['completedToday'])
+        with sqlite3.connect(self.db) as db:
+            snapshot = db.execute('SELECT payload FROM app_state').fetchone()[0]
+            history = db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall()
+            self.assertEqual(len(json.loads(snapshot)['finance']['transactions']), 7)
+        for _ in range(3):
+            api('GET', '/api/reports/today')
+            api('GET', '/api/state')
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], snapshot)
+            self.assertEqual(db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall(), history)
+        self.restart(device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), final)
+        self.assertEqual(api('GET', '/api/reports/today'), final_report)
+        self.assertEqual(api('GET', '/api/insights')['insights'], insights)
+        self.assertEqual(api('POST', '/api/transactions', purchase)['transaction']['id'], result['transaction']['id'])
+        self.assertEqual(api('POST', '/api/reflections', review)['transaction'], reviewed)
+        self.assertEqual(api('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        for lesson_id, option in zip(lesson_ids, ['save', 'limit']):
+            self.assertEqual(api('POST', '/api/lessons/answer', {'requestId': request_id(),
+                'lessonId': lesson_id, 'selectedOptionId': option})['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/feed', feed), final)
+        self.assertEqual(api('POST', '/api/savings', savings), final)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(self.seed_forest(), {'seededTransactions': 0})
+
+    def test_over_budget_spending_does_not_shrink_existing_tree_or_rewards(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        before = api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        report = api('GET', '/api/reports/today')
+        api('PUT', '/api/budgets', {'month': report['date'][:7], 'monthlyLimit': 500, 'dailyLimit': 25})
+        api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Groceries', 'amount': 26,
+            'category': 'food', 'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})
+        after = api('GET', '/api/state')
+        for field in ['forest', 'goal', 'wallet', 'letter', 'pet']:
+            self.assertEqual(after[field], before[field])
+        report = api('GET', '/api/reports/today')
+        self.assertFalse(report['underDailyLimit'])
+        self.assertIsNone(report['achievement'])
+        skipped = api('POST', '/api/decisions', {'requestId': request_id(), 'itemName': 'Hoodie', 'amount': 10, 'decision': 'skip'})
+        self.assertEqual(skipped['goal']['potentialSavings'], 10)
+        self.assertEqual(skipped['goal']['confirmedSaved'], 50)
+        self.assertEqual(skipped['forest'], before['forest'])
+        self.restart()
+        self.assertEqual(self.server.call('GET', '/api/state'), skipped)
+
     def test_validation_is_atomic(self):
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)
