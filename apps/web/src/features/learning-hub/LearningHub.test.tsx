@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LearningHub } from './LearningHub';
-import { questsById } from './data/quests';
-import { branches } from './data/branches';
+import { questsById } from './content/quests';
+import { branches } from './content/branches';
 
 beforeEach(() => window.localStorage.clear());
 afterEach(cleanup);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { branches } from '../data/branches';
-import { explainers, questsById, quests } from '../data/quests';
+import { branches } from '../content/branches';
+import { explainers, questsById, quests } from '../content/quests';
 import { createInitialProgress } from './progress';
 import { branchState, grownPercent, nextLesson, sproutedCount } from './tree';
 import type { LearningProgress } from '../types';
