@@ -41,7 +41,7 @@ export function PetTab(props) {
                       />
                       <button
                         onClick={() => {
-                          const cleaned = tempName.trim() || 'Pip';
+                          const cleaned = tempName.trim() || petName;
                           setPetName(cleaned);
                           setIsEditingName(false);
                           triggerCelebration(`Yay! My name is ${cleaned} now!`, 'happy');
