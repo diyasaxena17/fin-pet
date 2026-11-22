@@ -9,6 +9,12 @@ import { ReportsTab } from './ReportsTab';
 import { PetTab } from './PetTab';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
+export const PET_NAME_KEY = 'mochi.petName';
+const MAX_PET_NAME = 14;
+/** The saved name, or null until the user has chosen one. Storage may be unavailable, so failures fall back to null. */
+const readPetName = () => { try { return localStorage.getItem(PET_NAME_KEY)?.trim() || null; } catch { return null; } };
+const writePetName = (name) => { try { localStorage.setItem(PET_NAME_KEY, name); } catch { /* keep the name in memory only */ } };
+
 // --- MAIN APPLICATION ---
 export function App() {
   // Navigation & UI Modals
@@ -18,9 +24,13 @@ export function App() {
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
 
   // User & Hardware Companion State
-  const [petName, setPetName] = useState('Pip');
+  // No preset name: the user picks one on first launch (see the naming dialog below).
+  const [savedName, setSavedName] = useState(readPetName);
+  const petName = savedName ?? 'your squirrel';
+  const setPetName = (name) => { const cleaned = name.trim().slice(0, MAX_PET_NAME); if (!cleaned) return; writePetName(cleaned); setSavedName(cleaned); };
   const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState('Pip');
+  const [tempName, setTempName] = useState(savedName ?? '');
+  const [draftName, setDraftName] = useState('');
   const [voiceProfile, setVoiceProfile] = useState('cute'); // 'cute' | 'warm' | 'calm'
   const [hardwareMood, setHardwareMood] = useState('happy'); // 'happy' | 'alert' | 'worried'
   const [isWagging, setIsWagging] = useState(true);
@@ -237,6 +247,40 @@ export function App() {
       {/* MOBILE APP SHELL (max-w-[480px] centered on desktop, full-bleed on mobile) */}
       <div className="relative w-full max-w-[480px] min-h-screen sm:min-h-[850px] sm:max-h-[900px] bg-[#FAF6EE] sm:rounded-[38px] sm:shadow-[0_24px_60px_-15px_rgba(27,67,50,0.28)] sm:border-[6px] sm:border-[#2C241E] flex flex-col overflow-hidden">
 
+        {/* FIRST-RUN: the user names their squirrel (no default is picked for them) */}
+        {!savedName && (
+          <div className="absolute inset-0 z-50 bg-black/55 flex items-center justify-center p-4">
+            <form
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="name-squirrel-title"
+              onSubmit={(e) => { e.preventDefault(); setPetName(draftName); setTempName(draftName.trim()); }}
+              className="w-full bg-[#FAF6EE] rounded-3xl border-2 border-[#D6CFC2] shadow-2xl p-5 text-center"
+            >
+              <h2 id="name-squirrel-title" className="text-xl font-extrabold text-[#1B4332]">Name your squirrel</h2>
+              <p className="mt-1 text-sm text-[#52645A]">Pick any name you like. You can change it later.</p>
+              <label className="mt-4 block text-left text-xs font-bold text-[#1B4332]" htmlFor="squirrel-name-input">Squirrel name</label>
+              <input
+                id="squirrel-name-input"
+                type="text"
+                value={draftName}
+                maxLength={MAX_PET_NAME}
+                onChange={(e) => setDraftName(e.target.value)}
+                placeholder="e.g. Biscuit"
+                autoFocus
+                className="mt-1 w-full px-3 py-2 text-base font-bold text-[#1B4332] bg-white border-2 border-[#2D6A4F] rounded-xl focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!draftName.trim()}
+                className="mt-4 w-full py-2.5 rounded-xl bg-[#2D6A4F] text-white font-extrabold disabled:opacity-40"
+              >
+                Start with this name
+              </button>
+            </form>
+          </div>
+        )}
+
         {/* FLOATING TOAST NOTIFICATION */}
         {toastMessage && (
           <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-[#1B4332] text-[#FAF6EE] px-4 py-2 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap border border-[#52B788]/40 animate-bounce">
@@ -359,7 +403,7 @@ export function App() {
         {/* ========================================================= */}
         {/* MODAL 1: NFC TAP WELCOME & DAILY REPORT + 1-TAP VIBE CHECK */}
         {/* ========================================================= */}
-        {showNfcReportModal && (
+        {savedName && showNfcReportModal && (
           <div className="absolute inset-0 z-40 bg-black/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
             <div className="w-full bg-[#FAF6EE] rounded-3xl border-2 border-[#D6CFC2] shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
               {/* Top Hardware Banner */}

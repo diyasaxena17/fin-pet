@@ -35,11 +35,13 @@ describe('Squirrel & Tree journeys', () => {
   it('onboards into Forest with a goal and full letter', async () => {
     const user = userEvent.setup(); mount();
     await screen.findByRole('heading', { name: 'Let’s grow something that’s yours' });
+    expect((screen.getByLabelText('Squirrel name') as HTMLInputElement).value).toBe('');
+    await user.type(screen.getByLabelText('Squirrel name'), 'Biscuit');
     await user.type(screen.getByLabelText('Goal name'), 'Emergency fund');
     await user.type(screen.getByLabelText('What future are you building?'), 'My future');
     await user.click(screen.getByRole('button', { name: 'Start my forest' }));
     await screen.findByRole('heading', { name: 'A little progress, growing every day' });
-    expect(await api.getState()).toMatchObject({ initialized: true, goal: { targetAmount: 200 }, letter: { vision: 'My future' }, forest: { growthPercent: 0, treeStage: 'seedling' } });
+    expect(await api.getState()).toMatchObject({ initialized: true, pet: { name: 'Biscuit' }, goal: { targetAmount: 200 }, letter: { vision: 'My future' }, forest: { growthPercent: 0, treeStage: 'seedling' } });
   });
 
   it('saves a simple daily plan from the welcome check-in using the current budget API', async () => {
