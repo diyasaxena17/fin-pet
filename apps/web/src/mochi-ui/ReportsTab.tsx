@@ -2,6 +2,7 @@
 import * as Icons from './Icons';
 import { HardwareSquirrel } from './HardwareSquirrel';
 import { DailyBudgetCard } from './DailyBudgetCard';
+import { GoalsCard } from './GoalsCard';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function ReportsTab(props) {
@@ -13,54 +14,8 @@ export function ReportsTab(props) {
               {/* Daily Budget & Hardware Eye State Card (live, entered by the user) */}
               <DailyBudgetCard {...props} />
 
-              {/* Bi-Weekly Investing & Savings Goal Reports */}
-              <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold text-[#1B4332] flex items-center gap-1.5">
-                    <TrendingUp className="w-4 h-4 text-[#2D6A4F]" />
-                    Bi-Weekly Stash Reports
-                  </h3>
-                  <span className="text-[11px] font-semibold text-[#6B5E51]">
-                    Pay Period 11
-                  </span>
-                </div>
-
-                {/* Bi-Weekly Investing Goal */}
-                <div className="p-3 rounded-xl bg-[#F4F9F5] border border-[#D1E7DD]">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-extrabold text-[#1B4332]">
-                      📈 TFSA Index ETF Auto-Stash
-                    </span>
-                    <span className="text-xs font-extrabold text-[#2D6A4F]">
-                      $150 / $150
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-[#D1E7DD] rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-[#2D6A4F] rounded-full w-full" />
-                  </div>
-                  <p className="text-[11px] text-[#374151]">
-                    Completed 4 hours after payday! Zero payday-to-splurge leakage detected.
-                  </p>
-                </div>
-
-                {/* Bi-Weekly Savings Goal */}
-                <div className="p-3 rounded-xl bg-[#FFFBEB] border border-[#FDE68A]">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-extrabold text-[#92400E]">
-                      🎓 Winter Tuition & Emergency Fund
-                    </span>
-                    <span className="text-xs font-extrabold text-[#B45309]">
-                      $180 / $200
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-[#FDE68A] rounded-full overflow-hidden mb-1.5">
-                    <div className="h-full bg-[#D97706] rounded-full w-[90%]" />
-                  </div>
-                  <p className="text-[11px] text-[#57534E]">
-                    $20 remaining before Friday—resisting 1 takeout meal finishes this cycle!
-                  </p>
-                </div>
-              </div>
+              {/* Bi-Weekly Investing & Savings Goals (live, entered by the user) */}
+              <GoalsCard {...props} />
 
               {/* 3-Layer Behavioral Tracking Engine Insights */}
               <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs space-y-3">

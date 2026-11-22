@@ -33,3 +33,31 @@ export function todaysBankTransactions(now: Date = new Date()): BankTransaction[
     };
   });
 }
+
+/**
+ * Savings and investing transfers for the current two-week period (the 14 days ending today), standing in
+ * for what Plaid would read from the bank. Not stored in the backend, whose transactions are purchases only.
+ */
+export interface BankTransfer { date: string; kind: 'save' | 'invest'; name: string; amount: number }
+const TRANSFERS = [
+  { daysAgo: 12, kind: 'save', name: 'Transfer to Savings', amount: 45 },
+  { daysAgo: 11, kind: 'invest', name: 'Wealthsimple TFSA', amount: 75 },
+  { daysAgo: 8, kind: 'save', name: 'Transfer to Savings', amount: 45 },
+  { daysAgo: 4, kind: 'save', name: 'Transfer to Savings', amount: 45 },
+  { daysAgo: 3, kind: 'invest', name: 'Wealthsimple TFSA', amount: 75 },
+  { daysAgo: 1, kind: 'save', name: 'Transfer to Savings', amount: 45 },
+] as const;
+
+export function twoWeekTransfers(now: Date = new Date()): BankTransfer[] {
+  return TRANSFERS.map(t => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - t.daysAgo);
+    return { date: d.toLocaleDateString('en-CA'), kind: t.kind, name: t.name, amount: t.amount };
+  });
+}
+
+export function twoWeekTotals(now: Date = new Date()) {
+  const items = twoWeekTransfers(now);
+  const sum = (kind: BankTransfer['kind']) => Math.round(items.filter(t => t.kind === kind).reduce((s, t) => s + t.amount, 0) * 100) / 100;
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13);
+  return { saved: sum('save'), invested: sum('invest'), dayNum: 14, start: start.toLocaleDateString('en-CA'), end: now.toLocaleDateString('en-CA') };
+}

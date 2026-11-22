@@ -3,7 +3,8 @@
 #   "wake" / "tap"   (phone NFC tap)  -> wake up: happy dance, then today's budget mood from the app's API
 #   "mood:<letter>"  (app events)     -> play that mood if awake
 #   "mood!:<letter>" (app test button)-> wake and play that mood
-#   "sleep"                           -> sleep now
+#   "sleep"                           -> sleep now (the app says goodbye)
+#   "app:here"                        -> the app is open, so it gives the spoken reports instead
 # Letters: i idle, p happy dance, w worried, d sad, t talking, z sleep. After 10 quiet minutes it sleeps.
 # Closing this window also puts the squirrel to sleep.
 param(
@@ -80,6 +81,7 @@ function Handle([string]$text) {
     Wake "NFC tap"; return
   }
   if ($t -eq "sleep") { Go-Sleep "Goodbye"; return }
+  if ($t -eq "app:here") { $script:reportAt = $null; $script:lastActivity = Get-Date; return }   # the app is open and talking: it does the reports
   if ($t -match "^mood(!?):([ipwdtz])$") {
     $force = $Matches[1] -eq "!"; $letter = $Matches[2]
     if ($letter -eq $script:lastMood -and ((Get-Date) - $script:lastMoodAt).TotalSeconds -lt 1.5) { return }

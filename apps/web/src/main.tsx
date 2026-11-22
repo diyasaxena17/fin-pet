@@ -5,7 +5,8 @@ import { App } from './App';
 import './styles.css';
 import { AppProvider } from './lib/appState';
 import { SquirrelProvider } from './hardware/SquirrelProvider';
+import { MochiVoice } from './voice/MochiVoice';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><BrowserRouter><AppProvider><SquirrelProvider><App /></SquirrelProvider></AppProvider></BrowserRouter></React.StrictMode>,
+  <React.StrictMode><BrowserRouter><AppProvider><SquirrelProvider><App /><MochiVoice /></SquirrelProvider></AppProvider></BrowserRouter></React.StrictMode>,
 );

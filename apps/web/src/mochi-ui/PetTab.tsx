@@ -1,10 +1,11 @@
 // @ts-nocheck
 import * as Icons from './Icons';
 import { HardwareSquirrel } from './HardwareSquirrel';
+import { PERSONAS } from '../voice/personas';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function PetTab(props) {
-  const { squirrel, activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  const { squirrel, personaId, previewVoice, activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
   return (
     <>
           {activeTab === 'pet' && (
@@ -78,31 +79,24 @@ export function PetTab(props) {
                   Hardware Speaker Voice
                 </h3>
                 <p className="text-xs text-[#6B5E51] mb-3">
-                  Choose how {petName} cheers when you stay under your daily budget.
+                  Choose how {petName} talks and cheers. Tap one to hear it.
                 </p>
 
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'cute', label: 'Cute Chirp', emoji: '🐿️' },
-                    { id: 'warm', label: 'Warm Female', emoji: '✨' },
-                    { id: 'calm', label: 'Calm Male', emoji: '🌲' }
-                  ].map((v) => (
+                  {PERSONAS.map((v) => (
                     <button
                       key={v.id}
-                      onClick={() => {
-                        setVoiceProfile(v.id);
-                        playPetChime(v.id);
-                        squirrel?.react('t');
-                        showToast(`Voice set to ${v.label}`);
-                      }}
-                      className={`p-3 rounded-xl border text-center transition ${
-                        voiceProfile === v.id
+                      type="button"
+                      onClick={() => { previewVoice(v.id); showToast(`Voice set to ${v.name}`); }}
+                      className={`flex-col p-3 rounded-xl border text-center transition ${
+                        personaId === v.id
                           ? 'bg-[#1B4332] text-white border-[#1B4332] shadow-sm'
                           : 'bg-[#FAF6EE] text-[#292524] border-[#E2D7C1] hover:bg-[#F3ECE0]'
                       }`}
                     >
                       <div className="text-lg mb-1">{v.emoji}</div>
-                      <div className="text-xs font-bold">{v.label}</div>
+                      <div className="text-xs font-bold">{v.name}</div>
+                      <div className={`text-[10px] ${personaId === v.id ? 'text-white/80' : 'text-[#78716C]'}`}>{v.desc}</div>
                     </button>
                   ))}
                 </div>

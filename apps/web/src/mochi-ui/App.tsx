@@ -10,7 +10,10 @@ import { PetTab } from './PetTab';
 import { useSquirrel } from '../hardware/SquirrelProvider';
 import { useOptionalAppState } from '../lib/appState';
 import { api } from '../lib/api';
-import { todaysBankTransactions } from './bankFeed';
+import { todaysBankTransactions, twoWeekTotals } from './bankFeed';
+import { getGoals } from '../voice/goals';
+import { getPersona, PERSONAS, setPersona } from '../voice/personas';
+import { speak } from '../voice/speech';
 
 /** On-screen moods → the physical squirrel's letters (see hardware-connection/squirrel.ino). */
 const HARDWARE_LETTER = { happy: 'p', worried: 'w', alert: 't' };
@@ -81,6 +84,31 @@ export function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3200);
   };
+
+  // Live bi-weekly goals (entered in Reports) and the voice the squirrel talks with.
+  const [goals, setGoalsState] = useState(getGoals);
+  const refreshGoals = () => setGoalsState(getGoals());
+  const [personaId, setPersonaId] = useState(() => getPersona().id);
+  const previewVoice = (id) => {
+    setPersona(id); setPersonaId(id);
+    const p = PERSONAS.find((x) => x.id === id);
+    squirrel?.react('t');
+    void speak(`Hi! I'm ${petName}. Let's make your money happy.`, p);
+  };
+  const twoWeeks = twoWeekTotals();
+
+  // Show what the talking squirrel says, and its mood, on screen.
+  useEffect(() => {
+    const onBrain = (event) => {
+      const e = event.detail;
+      if (e.type === 'say') setSpeechBubble(e.text);
+      if (e.type === 'heard') showToast(`You: “${e.text}”`);
+      if (e.type === 'mood') { setHardwareMood(e.mood === 'happy' ? 'happy' : 'worried'); setIsWagging(e.mood === 'happy'); setTimeout(() => setIsWagging(false), 2800); }
+      if (e.type === 'mic' && e.blocked) showToast('Microphone blocked: allow mic access for localhost in Chrome');
+    };
+    window.addEventListener('mochi:brain', onBrain);
+    return () => window.removeEventListener('mochi:brain', onBrain);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A real NFC tap (or Wake up) on the physical squirrel opens the daily check-in here too.
   const wakeCount = squirrel?.wakeCount ?? 0;
@@ -266,7 +294,7 @@ export function App() {
     void syncBank();
   }, [Boolean(backend)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const uiProps = { squirrel, hasBudget, money, saveDailyBudget, bankFeed, bankSynced, syncBank, budgetBusy: app?.busy ?? false, budgetError: app?.error ?? '', canSave: Boolean(app), activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  const uiProps = { squirrel, useGoals: [goals, refreshGoals], goals, personaId, previewVoice, hasBudget, money, saveDailyBudget, bankFeed, bankSynced, syncBank, budgetBusy: app?.busy ?? false, budgetError: app?.error ?? '', canSave: Boolean(app), activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">
@@ -558,25 +586,19 @@ export function App() {
                   )}
                 </div>
 
-                {/* Bi-Weekly Snapshot */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0]">
-                    <div className="text-[10px] font-bold text-[#065F46]">
-                      Bi-Weekly Investing
-                    </div>
-                    <div className="font-extrabold text-[#1B4332]">
-                      $150 / $150 TFSA ✓
-                    </div>
+                {/* Bi-Weekly Snapshot (live goals) */}
+                {goals ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[['Bi-Weekly Investing', twoWeeks.invested, goals.investGoal], ['Bi-Weekly Savings', twoWeeks.saved, goals.saveGoal]].map(([label, got, goal]) => (
+                      <div key={label} className={`p-2.5 rounded-xl border ${got >= goal ? 'bg-[#ECFDF5] border-[#A7F3D0]' : 'bg-[#FFFBEB] border-[#FDE68A]'}`}>
+                        <div className={`text-[10px] font-bold ${got >= goal ? 'text-[#065F46]' : 'text-[#92400E]'}`}>{label}</div>
+                        <div className={`font-extrabold ${got >= goal ? 'text-[#1B4332]' : 'text-[#B45309]'}`}>{money(got)} / {money(goal)}{got >= goal ? ' ✓' : ''}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="p-2.5 rounded-xl bg-[#FFFBEB] border border-[#FDE68A]">
-                    <div className="text-[10px] font-bold text-[#92400E]">
-                      Bi-Weekly Savings
-                    </div>
-                    <div className="font-extrabold text-[#B45309]">
-                      $180 / $200 Goal
-                    </div>
-                  </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-[#6B5E51] text-center">Set your bi-weekly savings and investing goals in Reports.</p>
+                )}
 
                 <button
                   onClick={() => setShowNfcReportModal(false)}

@@ -53,10 +53,24 @@ The squirrel is run by a small background program on the laptop it's plugged int
 | Level up, savings added, goal reached (while awake) | Happy dance |
 | Spending synced from the bank goes over budget (while awake) | Worried or sad |
 | Pet tab test buttons | Wake and play that mood |
+| The app talks (greeting, reports, answers) | Tail sway (`t`) |
+| You say "goodbye", "good night", "bye bye"… | Asleep |
 | 10 quiet minutes, or closing the bridge | Asleep, screen off, servo released |
 
 Messages travel over the same private ntfy.sh topic: the phone sends `wake`, the app
-sends `mood:<letter>` (only acts while awake) or `mood!:<letter>` (wakes first).
+sends `mood:<letter>` (only acts while awake), `mood!:<letter>` (wakes first), `sleep`,
+and `app:here` (the app is open and gives the spoken reports itself).
+
+## Talking (apps/web/src/voice)
+
+When the app is open in Chrome, an NFC tap also starts Mochi's voice, the same brain as
+the original Mochi app: it greets you, says the daily budget report and the two-week
+savings/investing check (with the matching dance or worried face), asks once a day if
+you want the money news brief, then chats until you say goodbye. Six voices (Cutie,
+Sparkle, Sage, Buddy, Coach Max, Zay) are on the Pet tab. Voices, chat and news go
+through the dev server's `/mochi-voice` proxy to Mochi's existing Vercel server; put
+`MOCHI_PASS=<passcode>` in the repo-root `.env` (never committed). Click the page once
+after opening it so the browser allows sound, and allow the microphone.
 
 ## Use with the existing device poller
 
