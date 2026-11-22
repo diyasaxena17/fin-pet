@@ -4,7 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import './styles.css';
 import { AppProvider } from './lib/appState';
+import { SquirrelDock } from './hardware/SquirrelDock';
+import { SquirrelProvider } from './hardware/SquirrelProvider';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><BrowserRouter><AppProvider><App /></AppProvider></BrowserRouter></React.StrictMode>,
+  <React.StrictMode><BrowserRouter><AppProvider><SquirrelProvider><App /><SquirrelDock /></SquirrelProvider></AppProvider></BrowserRouter></React.StrictMode>,
 );
