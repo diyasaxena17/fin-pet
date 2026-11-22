@@ -18,7 +18,6 @@ describe('live daily budget', () => {
   it('has no preset budget, takes the one the user enters, and reads spending from the bank feed', async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole('button', { name: 'Close daily check-in' }));
     expect(screen.queryByText(/\$32/)).toBeNull();
     expect(screen.queryByText(/Log a purchase/)).toBeNull();
     const header = screen.getByTitle('Set or check today\'s daily budget');

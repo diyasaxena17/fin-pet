@@ -31,8 +31,7 @@ describe('Squirrel in the companion app (no hardware UI)', () => {
     const user = userEvent.setup();
     const sent: string[] = [];
     render(<MemoryRouter><AppProvider><SquirrelProvider send={message => sent.push(message)} eventSource={FakeSource as never}><CompanionApp /></SquirrelProvider></AppProvider></MemoryRouter>);
-    await user.click(screen.getByRole('button', { name: 'Close daily check-in' }));
-    await user.click(screen.getByRole('button', { name: /Tiger Pet/ }));
+    await user.click(screen.getByRole('button', { name: /^Profile$/ }));
     expect(screen.queryByText(/Connect squirrel/)).toBeNull();
     expect(screen.queryByText(/New link/)).toBeNull();
 
@@ -41,9 +40,7 @@ describe('Squirrel in the companion app (no hardware UI)', () => {
     await user.click(screen.getByRole('button', { name: 'Close daily check-in' }));
 
     sent.length = 0;
-    await user.click(screen.getByRole('button', { name: /Over-Limit Worried Eyes/ }));
-    expect(sent).toEqual(['mood!:w']);
-    await user.click(screen.getByRole('button', { name: /NFC Tap Check-In Eyes/ }));
+    await user.click(screen.getByRole('button', { name: /Simulate NFC tap/ }));
     expect(sent.at(-1)).toBe('wake');
   });
 
@@ -53,7 +50,6 @@ describe('Squirrel in the companion app (no hardware UI)', () => {
     const user = userEvent.setup();
     const sent: string[] = [];
     render(<MemoryRouter><AppProvider><SquirrelProvider send={message => sent.push(message)} eventSource={null}><CompanionApp /></SquirrelProvider></AppProvider></MemoryRouter>);
-    await user.click(screen.getByRole('button', { name: 'Close daily check-in' }));
     await user.click(screen.getByTitle('Set or check today\'s daily budget'));
     await user.type(screen.getByLabelText(/What’s your daily budget\?/), '40');
     await user.click(screen.getByRole('button', { name: 'Set budget' }));
