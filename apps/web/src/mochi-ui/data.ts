@@ -16,7 +16,7 @@ export const INITIAL_BRANCHES = [
         title: '50/30/20 Acorn Split',
         duration: '2 min',
         reward: 25,
-        completed: true,
+        completed: false,
         summary: 'Divide every paycheque automatically: 50% Needs (rent, groceries), 30% Wants, and 20% Winter Stash (savings & debt).',
         challengeType: 'quiz',
         question: 'You just got a $1,000 co-op paycheque. Using the 50/30/20 rule, how much goes straight into your Winter Stash (savings/TFSA)?',
@@ -35,7 +35,7 @@ export const INITIAL_BRANCHES = [
         completed: false,
         summary: 'Data shows 68% of buyer’s remorse happens between 11 PM and 3 AM due to decision fatigue. Put carts in a 48-hr vault!',
         challengeType: 'scenario',
-        question: 'It is 12:40 AM during finals week. You have a $34 food delivery cart open. What earns you +30 Golden Nuts?',
+        question: 'It is 12:40 AM during finals week. You have a $34 food delivery cart open. What earns you +30 acorns?',
         options: [
           { text: 'Order now & promise to skip lunch tomorrow', correct: false },
           { text: 'Drop it in the 48-Hr Wishlist Vault & drink water', correct: true },
@@ -54,14 +54,14 @@ export const INITIAL_BRANCHES = [
     accent: '#F59E0B',
     unlocked: true,
     coords: { x: 118, y: 205 },
-    labelPos: { x: 24, y: 170, align: 'left' },
+    labelPos: { x: 48, y: 170, align: 'left' },
     lessons: [
       {
         id: 't1',
         title: 'OSAP, Grants & Bursaries 101',
         duration: '3 min',
         reward: 30,
-        completed: true,
+        completed: false,
         summary: 'Grants are free acorns you never repay; loans accrue federal/provincial rules. Always submit your school’s general bursary profile!',
         challengeType: 'quiz',
         question: 'Which funding source reduces your net tuition cost without needing to be paid back after graduation?',
@@ -138,7 +138,7 @@ export const INITIAL_BRANCHES = [
   {
     id: 'investing',
     title: 'Investing & Emergency Stash',
-    subtitle: 'Crown Canopy (420 Nuts)',
+    subtitle: 'Crown Canopy (420 acorns)',
     pillar: 'Long-Term Resilience',
     color: '#7C2D12',
     accent: '#EA580C',

@@ -94,7 +94,7 @@ export function TopicForest() {
   return <div className="page-stack">
     <PageShell eyebrow="YOUR NFC FOREST GUIDE" title={`Welcome to the forest, ${state.pet.name}`}>
       <div className="topic-intro">
-        <SquirrelAvatar name={state.pet.name} mood={state.pet.mood} level={state.wallet.level} />
+        <SquirrelAvatar name={state.pet.name} mood={state.pet.mood} />
         <div><p className="topic-intro-title">Pick a branch. Learn at your own pace.</p><p className="supporting-copy">Small, practical money topics are here when you want them. Nothing to catch up on.</p></div>
       </div>
       <div className="topic-tree-scene" aria-hidden="true">

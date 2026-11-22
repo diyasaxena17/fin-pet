@@ -7,7 +7,7 @@ export function NutIcon({ size = 16 }: { size?: number }) {
     <path d="M9 12c0 3 1 5 3 6" fill="none" stroke="#a9784f" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 export function RewardBadge({ nuts, label }: { nuts: number; label?: string }) {
-  return <span className="wo-reward" aria-label={label ?? `${nuts} Golden Nuts`}>+{nuts} <NutIcon size={14} /></span>;
+  return <span className="wo-reward" aria-label={label ?? `${nuts} acorns`}>+{nuts} <NutIcon size={14} /></span>;
 }
 
 export interface SheetTab { id: string; label: string; icon: string }

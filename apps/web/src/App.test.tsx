@@ -18,7 +18,7 @@ describe('Squirrel & Tree journeys', () => {
   it('shows the supplied mobile companion UI at the app root without the NFC status badge', async () => {
     mount('/');
     expect(await screen.findByRole('img', { name: 'Interactive Financial Planning Skill Tree' })).toBeTruthy();
-    expect(screen.getByText('Tap any glowing branch to learn & earn Nuts')).toBeTruthy();
+    expect(screen.getByText('Tap a branch to learn and collect acorns')).toBeTruthy();
     expect(screen.queryByText(/NFC Connected/)).toBeNull();
   });
 
@@ -93,14 +93,14 @@ describe('Squirrel & Tree journeys', () => {
     expect((await api.getTransactions(new Date().toISOString().slice(0, 7))).transactions[0]?.reflection?.verdict).toBe('worth_it');
   });
 
-  it('rewards a lesson once and unlocks the level-based features', async () => {
+  it('rewards a lesson once with acorns and tree progress', async () => {
     const user = userEvent.setup(); await api.onboard(onboarding); const lessons = await api.getLessons(); const lesson = lessons.lessons[0]!; const correctId = 'save'; mount('/learn');
     await screen.findByRole('heading', { name: lesson.title }); await user.click(screen.getByLabelText('Record money actually set aside'));
-    await user.click(screen.getAllByRole('button', { name: 'Submit answer' })[0]!); await screen.findByText(/Reward: \+10 XP and \+5 acorns/);
+    await user.click(screen.getAllByRole('button', { name: 'Submit answer' })[0]!); await screen.findByText(/Collected \+5 acorns/);
     expect((await api.getLessons()).lessons.find(l => l.id === lesson.id)?.completed).toBe(true);
     const duplicate = await api.answerLesson({ requestId: createRequestId(), lessonId: lesson.id, selectedOptionId: correctId });
     expect(duplicate.reward).toEqual({ coins: 0, xp: 0 });
-    const after = await api.getState(); if (!after.initialized) throw new Error('Expected setup'); expect(after.wallet.xp).toBe(10);
+    const after = await api.getState(); if (!after.initialized) throw new Error('Expected setup'); expect(after.wallet.xp).toBe(10); expect(after.wallet.coins).toBe(5);
   });
 
   it('opening /report is read-only and check-in rewards only after explicit confirmation', async () => {
