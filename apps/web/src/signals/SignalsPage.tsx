@@ -67,7 +67,7 @@ export function SignalsPage({ section }: { section: Section }) {
           metric={d.regret.regretRate === null ? 'No answers yet' : `${pct(d.regret.regretRate)} regret`} detail="By merchant, time window and vibe" />
       </> : null}
     </div>
-    <p className="wo-bonus" aria-live="polite">Acorns collected: <strong>{s.nuts}</strong> <NutIcon size={13} /> <small>UI-only demo rewards, not saved to the account</small></p>
+    <p className="wo-bonus" aria-live="polite">Acorns collected: <strong>{s.nuts}</strong> <NutIcon size={13} /> <small>Example rewards are not saved to your account</small></p>
     {section === 'lab' ? <TestLab /> : null}
     {open === 'velocity' ? <VelocitySheet onClose={close} /> : null}{open === 'circadian' ? <CircadianSheet onClose={close} /> : null}
     {open === 'payday' ? <PaydaySheet onClose={close} /> : null}{open === 'leaks' ? <LeakSheet onClose={close} /> : null}

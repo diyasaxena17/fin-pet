@@ -4,7 +4,8 @@ import { HardwareSquirrel } from './HardwareSquirrel';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function SkillTreeTab(props) {
-  const { activeTab, branches, acorns, plantedAcorns, canopyGrowth, plantAcorn, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  const { activeTab, branches, acorns, plantedAcorns, canopyGrowth, plantAcorn, demoMode, resetDemoData, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  const treeScale = Math.min(plantedAcorns / 4, 1);
   return (
     <>
           {activeTab === 'tree' && (
@@ -16,7 +17,7 @@ export function SkillTreeTab(props) {
                   Tap a branch to learn and collect acorns
                 </span>
                 <span className="text-[11px] font-bold text-[#2D6A4F]">
-                  {Math.min(100, Math.round((plantedAcorns / 12) * 100))}% Tree grown
+                  {Math.min(100, Math.round((plantedAcorns / 4) * 100))}% Tree grown
                 </span>
               </div>
 
@@ -68,7 +69,8 @@ export function SkillTreeTab(props) {
                       fill="#40916C"
                     />
 
-                    {/* Canopy expands as acorns are planted. */}
+                    {treeScale > 0 ? <g transform={`translate(185 375) scale(${treeScale}) translate(-185 -375)`}>
+                    {/* The tree reaches full size after four planted acorns. */}
                     <g opacity="0.92">
                       <circle cx="185" cy="132" r={58 + canopyGrowth * 1.6} fill="url(#canopyBack)" />
                       <circle cx="115" cy="182" r={48 + canopyGrowth * 1.2} fill="url(#canopyBack)" />
@@ -119,6 +121,11 @@ export function SkillTreeTab(props) {
                         <ellipse cx={x} cy={y} rx="5" ry="6.5" fill={index % 2 ? '#F59E0B' : '#FBBF24'} />
                         <path d={`M${x - 5} ${y - 3} Q${x} ${y - 7} ${x + 5} ${y - 3} Z`} fill="#78350F" />
                       </g>)}
+                    </g> : <g aria-label="Seed stage">
+                      <ellipse cx="185" cy="358" rx="11" ry="9" fill="#A16207" />
+                      <path d="M174 357 Q185 346 196 357 Q186 354 174 357Z" fill="#FBBF24" />
+                      <path d="M184 349 Q184 344 188 342" fill="none" stroke="#78350F" strokeWidth="2.5" strokeLinecap="round" />
+                    </g>}
 
                     {/* INTERACTIVE CLICKABLE BRANCH NODES */}
                     {branches.map((branch) => {
@@ -241,6 +248,13 @@ export function SkillTreeTab(props) {
                     Plant acorn
                   </button>
                 </div>
+              {demoMode && (
+                <div className="mt-2 w-full max-w-[420px] text-right">
+                  <button type="button" onClick={resetDemoData} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#6B5E51] underline decoration-[#B8AA98] underline-offset-2 hover:text-[#1B4332]">
+                    Reset learning tree
+                  </button>
+                </div>
+              )}
               </div>
 
               {/* 3. DOCKED HARDWARE SQUIRREL COMPANION & BEHAVIORAL SPEECH BUBBLE */}

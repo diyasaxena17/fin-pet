@@ -17,6 +17,7 @@ export function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const showWinterOak = location.pathname === '/oak';
+  const demoMode = import.meta.env.DEV;
   // Navigation & UI Modals
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' | 'reports' | 'pet'
   const [showNfcReportModal, setShowNfcReportModal] = useState(false);
@@ -98,7 +99,7 @@ export function App() {
     (acc, b) => acc + b.lessons.filter((l) => l.completed).length,
     0
   );
-  const canopyGrowth = Math.min(plantedAcorns, 12);
+  const canopyGrowth = Math.min(plantedAcorns, 4);
   const collectAcorns = (amount) => {
     setAcorns((current) => current + amount);
     setAcornsCollected((current) => current + amount);
@@ -108,6 +109,19 @@ export function App() {
     setAcorns((current) => current - 1);
     setPlantedAcorns((current) => current + 1);
     showToast('Acorn planted! Your tree is growing.');
+  };
+  const resetDemoData = () => {
+    if (!demoMode || !window.confirm('Reset the learning tree? This also removes saved goals, profile and logs, behavioural data, and other Mochi data on this device.')) return;
+    try {
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith('mochi.')) window.localStorage.removeItem(key);
+      }
+      for (const key of Object.keys(window.sessionStorage)) {
+        if (key.startsWith('forest-')) window.sessionStorage.removeItem(key);
+      }
+    } finally {
+      window.location.assign('/');
+    }
   };
   const isUnderBudget = dailySpent <= dailyLimit;
 
@@ -237,7 +251,7 @@ export function App() {
     }
   };
 
-  const uiProps = { activeTab, setActiveTab, branches, acorns, acornsCollected, plantedAcorns, canopyGrowth, plantAcorn, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, setDailySpent, dailyLimit, setDailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  const uiProps = { activeTab, setActiveTab, branches, acorns, acornsCollected, plantedAcorns, canopyGrowth, plantAcorn, demoMode, resetDemoData, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, setDailySpent, dailyLimit, setDailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">

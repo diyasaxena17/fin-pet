@@ -23,7 +23,6 @@ export function ReportsTab({ activeTab, dailySpent, dailyLimit, isUnderBudget, r
   return <section className="p-4" aria-labelledby="daily-spending-title">
     <div className="mb-4 flex items-start justify-between gap-3">
       <div><p className="text-[11px] font-bold uppercase tracking-wider text-[#2D6A4F]">Reports</p><h2 id="daily-spending-title" className="text-xl font-extrabold text-[#1B4332]">Your money</h2></div>
-      <span className="rounded-full bg-[#F4F0E6] px-2 py-1 text-[10px] font-bold text-[#77664E]">Demo</span>
     </div>
     <div className="grid grid-cols-2 gap-2.5">
       <section className="col-span-2 rounded-2xl border border-[#E6DEC8] bg-white p-3.5 shadow-xs" aria-label="Daily spending report">
