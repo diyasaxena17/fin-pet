@@ -7,6 +7,7 @@ import { Insights } from './pages/Insights';
 import { Learn } from './pages/Learn';
 import { Onboarding } from './pages/Onboarding';
 import { Settings } from './pages/Settings';
+import { WinterOak } from './pages/WinterOak';
 import { Tap } from './pages/Tap';
 import { TopicForest } from './pages/TopicForest';
 import { Feedback, LoadingState } from './components/Feedback';
@@ -14,7 +15,7 @@ import { useAppState } from './lib/appState';
 
 const tabs = [
   { to: '/', label: 'Forest', end: true }, { to: '/budget', label: 'Budget' },
-  { to: '/insights', label: 'Insights' }, { to: '/learn', label: 'Learn' }, { to: '/future', label: 'Future' },
+  { to: '/insights', label: 'Insights' }, { to: '/learn', label: 'Learn' }, { to: '/oak', label: 'Winter Oak' }, { to: '/future', label: 'Future' },
 ];
 export function App() {
   const { state, error, reload } = useAppState();
@@ -27,7 +28,7 @@ export function App() {
       {error ? <div className="global-error"><Feedback kind="error">{error}</Feedback><button className="button--quiet" onClick={reload}>Retry loading</button></div> : null}
       {state === null ? <LoadingState>Connecting to your forest…</LoadingState> : <Routes>
         <Route path="/" element={<Dashboard />} /><Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/budget" element={<Budget />} /><Route path="/insights" element={<Insights />} /><Route path="/learn" element={<Learn />} />
+        <Route path="/budget" element={<Budget />} /><Route path="/insights" element={<Insights />} /><Route path="/learn" element={<Learn />} /><Route path="/oak" element={<WinterOak />} />
         <Route path="/future" element={<FutureMe />} /><Route path="/future-me" element={<Navigate to="/future" replace />} />
         <Route path="/report" element={<CheckIn />} /><Route path="/check-in" element={<Navigate to="/report" replace />} /><Route path="/tap" element={<TopicForest />} /><Route path="/topics" element={<TopicForest />} /><Route path="/feed" element={<Tap />} />
         <Route path="/settings" element={<Settings />} />

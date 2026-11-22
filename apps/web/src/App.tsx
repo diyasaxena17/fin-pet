@@ -20,7 +20,7 @@ export function App() {
     {signals ? <><Link className="text-link" to="/">Forest home</Link><SignalsApp /></>
       : legacyRoute || legacyMode ? <LegacyApp />
         : <><nav aria-label="Experience navigation" className="flex justify-center gap-4 p-2">
-          <Link to="/signals">Behavioural tools</Link><Link to="/?legacy=1">Account dashboard</Link>
+          <Link to="/signals">Behavioural tools</Link><Link to="/oak">Learn: Winter Oak</Link><Link to="/?legacy=1">Account dashboard</Link>
         </nav><CompanionApp /></>}
   </Suspense>;
 }
