@@ -1,40 +1,26 @@
-import { useEffect, useRef } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { SignalsPage } from './signals/SignalsPage';
-import { SignalsProvider } from './signals/store';
-import { Hud } from './components/Hud';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
-const tabs = [
-  { to: '/', label: 'Passive', icon: '📡', end: true }, { to: '/intent', label: 'Intent', icon: '🛑' },
-  { to: '/check-ins', label: 'Check-ins', icon: '🧠' }, { to: '/lab', label: 'Test lab', icon: '🧪' },
-] as const;
+const CompanionApp = lazy(() => import('./mochi-ui/App').then(module => ({ default: module.App })));
+const LegacyApp = lazy(() => import('./LegacyApp').then(module => ({ default: module.App })));
+const SignalsApp = lazy(() => import('./signals/SignalsApp').then(module => ({ default: module.SignalsApp })));
+const signalPaths = new Set(['/signals', '/intent', '/check-ins', '/lab']);
 
 export function App() {
   const { pathname } = useLocation();
-  const scroller = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [pathname]);
-  return (
-    <SignalsProvider>
-      <div className="wo-stage">
-        <div className="wo-phone">
-          <Hud />
-          <div className="wo-scroll" ref={scroller}>
-            <main className="wo-main">
-              <Routes>
-                <Route path="/" element={<SignalsPage section="passive" />} />
-                <Route path="/intent" element={<SignalsPage section="intent" />} />
-                <Route path="/check-ins" element={<SignalsPage section="checkins" />} />
-                <Route path="/lab" element={<SignalsPage section="lab" />} />
-                <Route path="*" element={<p>Page not found.</p>} />
-              </Routes>
-            </main>
-          </div>
-          <nav aria-label="Main navigation" className="wo-nav">
-            {tabs.map((t) => <NavLink key={t.to} to={t.to} end={'end' in t}><span aria-hidden="true">{t.icon}</span><small>{t.label}</small></NavLink>)}
-          </nav>
-          <div id="wo-overlay" />
-        </div>
-      </div>
-    </SignalsProvider>
-  );
+  const [searchParams] = useSearchParams();
+  const signals = signalPaths.has(pathname);
+  const legacyRoute = !signals && (pathname !== '/' || searchParams.get('legacy') === '1');
+  const [legacyMode, setLegacyMode] = useState(legacyRoute);
+  useEffect(() => {
+    if (signals) setLegacyMode(false);
+    else if (legacyRoute) setLegacyMode(true);
+  }, [signals, legacyRoute]);
+  return <Suspense fallback={<p role="status">Loading your forest…</p>}>
+    {signals ? <><Link className="text-link" to="/">Forest home</Link><SignalsApp /></>
+      : legacyRoute || legacyMode ? <LegacyApp />
+        : <><nav aria-label="Experience navigation" className="flex justify-center gap-4 p-2">
+          <Link to="/signals">Behavioural tools</Link><Link to="/?legacy=1">Account dashboard</Link>
+        </nav><CompanionApp /></>}
+  </Suspense>;
 }

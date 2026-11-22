@@ -23,7 +23,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let active = true;
     setError('');
     api.getState().then((value) => { if (active) setState(value); }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Unable to load Mochi.');
+      if (active) setError(reason instanceof Error ? reason.message : 'Unable to load your forest.');
     });
     return () => { active = false; };
   }, [loadVersion]);

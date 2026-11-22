@@ -8,10 +8,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    method,
-    ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      cache: 'no-store',
+      ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new ApiError(0, 'OFFLINE', 'Could not reach the server. Check your connection and retry.');
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as ApiErrorResponse | null;
     throw new ApiError(response.status, payload?.error?.code ?? 'HTTP_ERROR', payload?.error?.message ?? `Request failed (${response.status})`);
