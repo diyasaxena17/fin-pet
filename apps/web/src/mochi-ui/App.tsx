@@ -7,6 +7,10 @@ import { playPetChime } from './playPetChime';
 import { SkillTreeTab } from './SkillTreeTab';
 import { ReportsTab } from './ReportsTab';
 import { PetTab } from './PetTab';
+import { useSquirrel } from '../hardware/SquirrelProvider';
+
+/** On-screen moods → the physical squirrel's letters (see hardware-connection/squirrel.ino). */
+const HARDWARE_LETTER = { happy: 'p', worried: 'w', alert: 't' };
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export const PET_NAME_KEY = 'mochi.petName';
@@ -17,6 +21,7 @@ const writePetName = (name) => { try { localStorage.setItem(PET_NAME_KEY, name);
 
 // --- MAIN APPLICATION ---
 export function App() {
+  const squirrel = useSquirrel();
   // Navigation & UI Modals
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' | 'reports' | 'pet'
   const [showNfcReportModal, setShowNfcReportModal] = useState(true);
@@ -54,6 +59,7 @@ export function App() {
 
   // Trigger temporary celebration tail wag
   const triggerCelebration = (customSpeech, customMood = 'happy') => {
+    squirrel?.react(HARDWARE_LETTER[customMood] ?? 'p');
     setHardwareMood(customMood);
     setIsWagging(true);
     if (customSpeech) setSpeechBubble(customSpeech);
@@ -67,6 +73,20 @@ export function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3200);
   };
+
+  // A real NFC tap (or Wake up) on the physical squirrel opens the daily check-in here too.
+  const wakeCount = squirrel?.wakeCount ?? 0;
+  useEffect(() => {
+    if (!wakeCount) return;
+    setShowNfcReportModal(true);
+    setHardwareMood(isUnderBudget ? 'happy' : 'worried');
+    setIsWagging(true);
+    setSpeechBubble(isUnderBudget
+      ? `NFC tapped! You're $${dailyLimit - dailySpent} under today's budget. Happy dance!`
+      : `NFC tapped! We're $${dailySpent - dailyLimit} over today's budget. Let's slow down tonight.`);
+    const timer = setTimeout(() => setIsWagging(false), 2800);
+    return () => clearTimeout(timer);
+  }, [wakeCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial subtle stop of initial NFC wag
   useEffect(() => {
@@ -209,7 +229,7 @@ export function App() {
     }
   };
 
-  const uiProps = { activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  const uiProps = { squirrel, activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">

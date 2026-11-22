@@ -84,3 +84,26 @@ describe('Squirrel dock', () => {
     expect(container.innerHTML).toBe('');
   });
 });
+
+describe('Squirrel in the companion app', () => {
+  it('opens the daily check-in on a real NFC tap and drives the squirrel from the Pet tab', async () => {
+    const { App: CompanionApp, PET_NAME_KEY } = await import('../mochi-ui/App');
+    localStorage.setItem(PET_NAME_KEY, 'Tiger');
+    await api.onboard(onboarding);
+    const user = userEvent.setup();
+    const link = fakeLink();
+    render(<MemoryRouter><AppProvider><SquirrelProvider link={link as unknown as SquirrelLink} eventSource={FakeSource as never}><CompanionApp /></SquirrelProvider></AppProvider></MemoryRouter>);
+    await user.click(screen.getByRole('button', { name: /Tiger Pet/ }));
+    await user.click(screen.getByRole('button', { name: 'Connect squirrel (USB)' }));
+    await screen.findByText(/Squirrel connected by USB • Asleep/);
+    expect(link.sent).toEqual(['z']);
+
+    FakeSource.last!.tap();
+    await screen.findByText('NFC Tap Activated');
+    expect(link.sent).toEqual(['z', 'p']);
+    expect(screen.getByText(/Squirrel connected by USB • Awake/)).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /Over-Limit Worried Eyes/ }));
+    expect(link.sent.at(-1)).toBe('w');
+  });
+});

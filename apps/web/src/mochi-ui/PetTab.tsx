@@ -1,10 +1,11 @@
 // @ts-nocheck
 import * as Icons from './Icons';
 import { HardwareSquirrel } from './HardwareSquirrel';
+import { SquirrelControls } from '../hardware/SquirrelControls';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function PetTab(props) {
-  const { activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  const { squirrel, activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
   return (
     <>
           {activeTab === 'pet' && (
@@ -68,9 +69,22 @@ export function PetTab(props) {
                   )}
                 </div>
                 <p className="text-xs text-[#6B5E51] mt-0.5">
-                  Hardware ID: #SQ-NFC-04 • Battery 92%
+                  {squirrel
+                    ? squirrel.status === 'connected'
+                      ? `Squirrel connected by USB • ${squirrel.awake ? 'Awake' : 'Asleep until the next NFC tap'}`
+                      : squirrel.status === 'unsupported'
+                        ? 'Open in Chrome or Edge on a computer to connect the squirrel'
+                        : 'Squirrel not connected yet. Connect it below.'
+                    : 'Hardware ID: #SQ-NFC-04 • Battery 92%'}
                 </p>
               </div>
+
+              {/* Real hardware: USB connection, NFC wake link, wake / sleep */}
+              {squirrel && (
+                <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs">
+                  <SquirrelControls />
+                </div>
+              )}
 
               {/* Voice Personality Selector */}
               <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs">
@@ -92,6 +106,7 @@ export function PetTab(props) {
                       onClick={() => {
                         setVoiceProfile(v.id);
                         playPetChime(v.id);
+                        squirrel?.react('t');
                         showToast(`Voice set to ${v.label}`);
                       }}
                       className={`p-3 rounded-xl border text-center transition ${
@@ -114,12 +129,13 @@ export function PetTab(props) {
                 </h3>
 
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    if (squirrel && !squirrel.awake) squirrel.play('p');
                     triggerCelebration(
                       `Under daily budget! Tail servo wagging at 100% excitement!`,
                       'happy'
-                    )
-                  }
+                    );
+                  }}
                   className="w-full py-2.5 px-3.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] text-xs font-extrabold flex items-center justify-between hover:bg-[#D1FAE5] transition"
                 >
                   <span>😄 Under-Budget Celebration Dance + Tail Wag</span>
@@ -128,6 +144,7 @@ export function PetTab(props) {
 
                 <button
                   onClick={() => {
+                    squirrel?.wake('Test NFC tap');
                     setHardwareMood('alert');
                     setIsWagging(false);
                     setSpeechBubble(
@@ -143,6 +160,7 @@ export function PetTab(props) {
 
                 <button
                   onClick={() => {
+                    squirrel?.play('w');
                     setHardwareMood('worried');
                     setIsWagging(false);
                     setSpeechBubble(

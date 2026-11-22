@@ -12,11 +12,16 @@ export interface SquirrelContextValue {
   tapCode: string;
   tapStatus: 'off' | 'listening' | 'reconnecting';
   message: string;
+  /** Goes up by one every time the squirrel is woken (NFC tap or Wake up). */
+  wakeCount: number;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   wake(source?: string): void;
   sleep(): void;
+  /** Plays a mood, waking the squirrel first if needed (test buttons). */
   play(letter: SquirrelLetter): void;
+  /** Plays a mood only if the squirrel is awake (app events). */
+  react(letter: SquirrelLetter): void;
   setTapCode(code: string): boolean;
   newTapCode(): void;
 }
@@ -45,6 +50,7 @@ export function SquirrelProvider({ children, link: providedLink, eventSource }: 
   const [tapCode, setTapCodeState] = useState(loadTapCode);
   const [tapStatus, setTapStatus] = useState<SquirrelContextValue['tapStatus']>('off');
   const [message, setMessage] = useState('');
+  const [wakeCount, setWakeCount] = useState(0);
   const awakeRef = useRef(false);
   const speaking = useRef(false);
   const moodUntil = useRef(0);
@@ -76,6 +82,7 @@ export function SquirrelProvider({ children, link: providedLink, eventSource }: 
   const wake = useCallback((source = 'Woken up') => {
     awakeRef.current = true;
     setAwake(true);
+    setWakeCount(count => count + 1);
     play('p');
     setMessage(`${source}: happy dance!`);
     const current = stateRef.current;
@@ -132,21 +139,23 @@ export function SquirrelProvider({ children, link: providedLink, eventSource }: 
   }, [tapCode, wake, eventSource]);
 
   const value = useMemo<SquirrelContextValue>(() => ({
-    status, awake, tapCode, tapStatus, message,
+    status, awake, tapCode, tapStatus, message, wakeCount,
     connect: async () => {
       const ok = await link.connect();
       setMessage(ok ? 'Squirrel connected. Tap the NFC chip (or press Wake up) to wake it.' : link.status === 'unsupported'
         ? 'This browser can’t reach USB devices. Open the app in Chrome or Edge on a computer.' : 'No squirrel selected.');
     },
     disconnect: async () => { await link.disconnect(); setMessage('Squirrel disconnected.'); },
-    wake, sleep, play: letter => { if (!awakeRef.current) { awakeRef.current = true; setAwake(true); } play(letter); },
+    wake, sleep,
+    play: letter => { if (!awakeRef.current) { awakeRef.current = true; setAwake(true); } play(letter); },
+    react: letter => { if (awakeRef.current) play(letter); },
     setTapCode: code => {
       const trimmed = code.trim();
       if (!isTapCode(trimmed)) return false;
       saveTapCode(trimmed); setTapCodeState(trimmed); return true;
     },
     newTapCode: () => { const code = makeTapCode(); saveTapCode(code); setTapCodeState(code); },
-  }), [status, awake, tapCode, tapStatus, message, link, wake, sleep, play]);
+  }), [status, awake, tapCode, tapStatus, message, wakeCount, link, wake, sleep, play]);
 
   return <SquirrelContext.Provider value={value}>{children}</SquirrelContext.Provider>;
 }
