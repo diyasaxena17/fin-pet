@@ -57,9 +57,19 @@ export function MochiVoice({ deps: overrides }: { deps?: Partial<BrainDeps> } = 
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
+  // Only one open tab talks (otherwise every tab would answer the same tap).
+  const leader = useRef(false);
+  useEffect(() => {
+    const locks = (navigator as Navigator & { locks?: { request(name: string, cb: () => Promise<void>): Promise<void> } }).locks;
+    if (!locks) { leader.current = true; return; }
+    let release: () => void = () => undefined;
+    void locks.request('mochi-voice-leader', () => { leader.current = true; return new Promise<void>(resolve => { release = resolve; }); }).catch(() => undefined);
+    return () => { leader.current = false; release(); };
+  }, []);
+
   const wakeCount = squirrel?.wakeCount ?? 0;
   useEffect(() => {
-    if (wakeCount > 0) void brainRef.current?.tap();
+    if (wakeCount > 0 && leader.current) void brainRef.current?.tap();
   }, [wakeCount]);
 
   return null;
