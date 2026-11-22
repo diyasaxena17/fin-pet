@@ -22,14 +22,14 @@ export function templateBrief(d: MarketData): string {
     out.push(`Markets are ${up === q.length ? 'up across the board' : up === 0 ? 'down across the board' : up > q.length / 2 ? 'mostly up' : 'mostly down'} today.`);
     q.slice(0, 3).forEach(x => out.push(`${x.symbol}, ${FUND_NAMES[x.symbol] ?? 'one of your picks'}, is ${(x.changePct ?? 0) >= 0 ? 'up' : 'down'} ${Math.abs(x.changePct ?? 0)} percent.`));
   }
-  const heads = [...d.financeNews.slice(0, 2), ...d.businessNews.slice(0, 1), ...d.generalNews.slice(0, 1)].map(a => a.title).filter(Boolean);
-  if (heads.length) out.push('In the news: ' + heads.map(t => t.replace(/[.!?]+$/, '')).join('. ') + '.');
-  out.push(LONG_TIPS[Math.floor(Math.random() * LONG_TIPS.length)]!, 'Want to chat about any of these?');
+  const heads = [...d.financeNews.slice(0, 2), ...d.businessNews.slice(0, 1)].filter(a => a.title);
+  for (const a of heads) out.push(`${a.source ? a.source + ' reports' : 'A headline today'}: ${a.title.replace(/\s+-\s+[^-]+$/, '').replace(/[.!?]+$/, '')}.`);
+  out.push(LONG_TIPS[Math.floor(Math.random() * LONG_TIPS.length)]!);
   return out.join(' ');
 }
 
 export async function dailyBrief(petName: string, persona: Persona, force = false): Promise<{ text: string; data: MarketData }> {
-  const key = 'mochi.brief.' + today();
+  const key = 'mochi.brief2.' + today();   // v2: names specific articles
   if (!force) { try { const c = localStorage.getItem(key); if (c) return JSON.parse(c) as { text: string; data: MarketData }; } catch { /* no cache */ } }
   const data = await fetchMarket();
   if (!data.quotes.length && !data.financeNews.length && !data.generalNews.length && !data.businessNews.length) throw new Error('no market data');
@@ -39,11 +39,11 @@ export async function dailyBrief(petName: string, persona: Persona, force = fals
 ${JSON.stringify(data)}
 
 Write ${petName}'s spoken daily money brief for a Canadian university student who invests for the long term (10+ years, e.g. index ETFs in a TFSA).
-70 to 110 words. Plain spoken sentences only: no lists, markdown, emojis, or symbols (say "percent", "dollars").
-1) Open with a one-line market mood from the quotes, explaining in plain words what the funds represent. If there are no quotes, skip this.
-2) Pick the two or three headlines that matter most and say what each could mean for a long-term investor, not a day trader.
-3) Give one calm long-term takeaway (diversify, keep contributing, don't react to daily swings, emergency fund first, etc.).
-4) End with a short friendly question.
+Keep it concise: 60 to 90 words. Plain spoken sentences only: no lists, markdown, emojis, or symbols (say "percent", "dollars").
+1) One short line on the market mood from the quotes, saying in plain words what the funds are. Skip if there are no quotes.
+2) Refer to two or three SPECIFIC articles from the data by what they actually report and name the source, e.g. "Reuters reports that Bahrain says an Iranian attack hit an industrial facility". Then say in one short clause what it could mean for a long-term investor.
+3) One calm long-term takeaway in one sentence.
+Do not end with a question. Only use facts from the data.
 Only use facts from the data. Never tell them to buy or sell a specific stock or to time the market.${persona.lingo ? '\n' + persona.lingo : ''}`;
     text = await gemText({ systemInstruction: { parts: [{ text: `You are ${petName}, a cute, upbeat but sensible money pet. You speak out loud.` }] },
       contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1200, temperature: 0.6 } }, undefined, 20000);
