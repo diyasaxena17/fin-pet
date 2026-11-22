@@ -1,0 +1,56 @@
+import { useState, type ReactNode } from 'react';
+import { RewardBadge } from '../components/Sheet';
+import { REWARDS, useSignals } from './store';
+import { VIBES, type BankTxn, type Pulse, type Vibe } from './types';
+import { cents } from './analytics';
+import { fmtWhen } from './format';
+
+export function Callout({ title, children, reward }: { title: string; children: ReactNode; reward?: number }) {
+  return <div className="wo-callout"><div className="wo-callout-top"><h3>{title}</h3>{reward ? <RewardBadge nuts={reward} /> : null}</div><div className="wo-callout-body">{children}</div></div>;
+}
+export function Bar({ label, value, max, tone = 'green', right }: { label: string; value: number; max: number; tone?: 'green' | 'amber' | 'rose'; right?: ReactNode }) {
+  const width = max > 0 ? Math.max(value > 0 ? 3 : 0, Math.min(100, (value / max) * 100)) : 0;
+  return <div className="wo-bar-row"><div className="wo-bar-label"><span>{label}</span><strong>{right}</strong></div>
+    <div className="wo-bar" role="img" aria-label={`${label}: ${right ?? value}`}><span className={`wo-bar-fill wo-${tone}`} style={{ width: `${width}%` }} /></div></div>;
+}
+export function Empty({ children }: { children: ReactNode }) { return <p className="wo-empty">{children}</p>; }
+
+/** Reflection prompt in the style of the practice challenge. Not graded: any answer is valid. */
+export function Challenge({ id, question, options }: { id: string; question: string; options: { id: string; label: string; tip: string }[] }) {
+  const { state, dispatch } = useSignals();
+  const [picked, setPicked] = useState<string | null>(null);
+  const done = Boolean(state.collected[id]);
+  const chosen = options.find((o) => o.id === picked);
+  return <div className="wo-challenge">
+    <p className="wo-eyebrow">INTERACTIVE REFLECTION</p><p className="wo-question">{question}</p>
+    <div role="radiogroup" aria-label={question} className="wo-options">
+      {options.map((o) => <button key={o.id} type="button" role="radio" aria-checked={picked === o.id} disabled={done}
+        className="wo-option" data-selected={picked === o.id} onClick={() => setPicked(o.id)}>{o.label}</button>)}
+    </div>
+    {chosen && done ? <p className="wo-tip" role="status">{chosen.tip}</p> : null}
+    <button type="button" className="wo-cta" disabled={done || !picked} onClick={() => dispatch({ type: 'collect', id })}>
+      {done ? `Collected +${REWARDS.insight.nuts} Golden Nuts ✓` : `Submit & Collect +${REWARDS.insight.nuts} Golden Nuts`}</button>
+  </div>;
+}
+
+export function VibeTagger({ txn }: { txn: BankTxn }) {
+  const { state, dispatch } = useSignals();
+  const current = state.vibes[txn.id];
+  return <div className="wo-vibes" role="group" aria-label={`How did ${txn.merchant} feel?`}>
+    {VIBES.map((v) => <button key={v.id} type="button" className="wo-vibe" aria-pressed={current === v.id}
+      aria-label={`${v.label} — ${txn.merchant}`} onClick={() => dispatch({ type: 'tagVibe', id: txn.id, vibe: v.id as Vibe })}>
+      <span aria-hidden="true">{v.emoji}</span><small>{v.label}</small></button>)}
+  </div>;
+}
+export function TxnLine({ txn, children }: { txn: BankTxn; children?: ReactNode }) {
+  return <div className="wo-txn"><div><strong>{txn.name === txn.merchant ? txn.merchant : `${txn.name} · ${txn.merchant}`}</strong>
+    <small>{fmtWhen(txn.at)} · {txn.category}{txn.source === 'simulated' ? ' · SIMULATED' : ''}</small></div><span className="wo-amount">−{cents(txn.amountCents)}</span>{children}</div>;
+}
+export function PulseButtons({ txn }: { txn: BankTxn }) {
+  const { state, dispatch } = useSignals();
+  const current: Pulse | undefined = state.pulses[txn.id];
+  return <div className="wo-pulse" role="group" aria-label={`Was ${txn.merchant} worth it?`}>
+    <button type="button" aria-pressed={current === 'worth'} onClick={() => dispatch({ type: 'answerPulse', id: txn.id, pulse: 'worth' })}>👍 Worth It</button>
+    <button type="button" aria-pressed={current === 'regret'} onClick={() => dispatch({ type: 'answerPulse', id: txn.id, pulse: 'regret' })}>👎 Regret</button>
+  </div>;
+}
