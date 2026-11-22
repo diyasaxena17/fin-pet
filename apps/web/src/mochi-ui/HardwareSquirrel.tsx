@@ -2,13 +2,13 @@
 // --- ANIMATED HARDWARE SQUIRREL AVATAR COMPONENT ---
 export const HardwareSquirrel = ({ mood = 'happy', wagging = false, size = 'md', onClick }) => {
   // mood: 'happy' | 'alert' | 'worried'
-  const scaleClass = size === 'xl' ? 'w-52 h-52' : size === 'lg' ? 'w-28 h-28' : size === 'sm' ? 'w-14 h-14' : 'w-20 h-20';
+  const scaleClass = size === 'lg' ? 'w-28 h-28' : size === 'sm' ? 'w-14 h-14' : 'w-20 h-20';
   return (
     <button
       onClick={onClick}
       type="button"
       aria-label="Interact with hardware squirrel companion"
-      className={`hardware-squirrel-button relative select-none transition-transform duration-300 active:scale-95 focus:outline-none ${scaleClass}`}
+      className={`relative select-none transition-transform duration-300 active:scale-95 focus:outline-none ${scaleClass}`}
     >
       <svg viewBox="0 0 140 140" className="w-full h-full overflow-visible drop-shadow-md">
         <defs>
@@ -64,8 +64,8 @@ export const HardwareSquirrel = ({ mood = 'happy', wagging = false, size = 'md',
         {/* Head */}
         <circle cx="76" cy="56" r="24" fill="url(#furGrad)" />
         {/* Cheeks */}
-        <circle cx="62" cy="63" r="6" fill={mood === 'asleep' ? '#f08f9e' : '#F59E0B'} opacity="0.45" />
-        <circle cx="92" cy="63" r="6" fill={mood === 'asleep' ? '#f08f9e' : '#F59E0B'} opacity="0.45" />
+        <circle cx="62" cy="63" r="6" fill="#F59E0B" opacity="0.45" />
+        <circle cx="92" cy="63" r="6" fill="#F59E0B" opacity="0.45" />
 
         {/* HARDWARE OLED EYE DISPLAY VISOR */}
         <rect
@@ -74,8 +74,8 @@ export const HardwareSquirrel = ({ mood = 'happy', wagging = false, size = 'md',
           width="42"
           height="19"
           rx="9.5"
-          fill={mood === 'asleep' ? 'transparent' : '#1C1917'}
-          stroke={mood === 'asleep' ? 'transparent' : '#44403C'}
+          fill="#1C1917"
+          stroke="#44403C"
           strokeWidth="1.5"
         />
 
@@ -127,12 +127,6 @@ export const HardwareSquirrel = ({ mood = 'happy', wagging = false, size = 'md',
               strokeLinecap="round"
             />
             <circle cx="87" cy="57.5" r="2.5" fill="#FCA5A5" />
-          </g>
-        )}
-        {mood === 'asleep' && (
-          <g fill="none" stroke="#4a3027" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M62 55 Q67 59 72 55" />
-            <path d="M82 55 Q87 59 92 55" />
           </g>
         )}
 

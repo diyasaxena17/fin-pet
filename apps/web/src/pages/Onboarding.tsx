@@ -8,7 +8,7 @@ export function Onboarding() {
   const { state, busy, mutate } = useAppState();
   const navigate = useNavigate();
   const [budgetEnabled, setBudgetEnabled] = useState(false);
-  if (state?.initialized) return <Navigate to="/?legacy=1" replace />;
+  if (state?.initialized) return <Navigate to="/" replace />;
 
   return <PageShell eyebrow="START YOUR FOREST" title="Let’s grow something that’s yours">
     <p className="mb-5">Choose a squirrel name, set one savings goal, and write a few words for your future self. You can keep things simple and add a budget later.</p>
@@ -42,9 +42,9 @@ export function Onboarding() {
           return updated;
         });
       }
-      navigate('/?legacy=1');
+      navigate('/');
     }}>
-      <div className="form-section"><p className="eyebrow">01 · YOUR COMPANION</p><label>Squirrel name<input name="squirrelName" required maxLength={200} defaultValue="Hazel" /></label></div>
+      <div className="form-section"><p className="eyebrow">01 · YOUR COMPANION</p><label>Squirrel name<input name="squirrelName" required maxLength={200} placeholder="Name your squirrel" /></label></div>
       <fieldset className="choice-fieldset"><legend className="eyebrow">HOW SHOULD YOUR COMPANION SPEAK?</legend>
         <label className="choice-row"><input type="radio" name="voice" value="cute" defaultChecked /><span><strong>Warm & playful</strong><small>Friendly, light encouragement.</small></span></label>
         <label className="choice-row"><input type="radio" name="voice" value="calm" /><span><strong>Calm & simple</strong><small>Quiet, straightforward guidance.</small></span></label>

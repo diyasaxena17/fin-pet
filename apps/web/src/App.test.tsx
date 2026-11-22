@@ -18,7 +18,7 @@ describe('Squirrel & Tree journeys', () => {
   it('shows the supplied mobile companion UI at the app root without the NFC status badge', async () => {
     mount('/');
     expect(await screen.findByRole('img', { name: 'Interactive Financial Planning Skill Tree' })).toBeTruthy();
-    expect(screen.getByText('Tap a branch to learn and collect acorns')).toBeTruthy();
+    expect(screen.getByText('Tap any glowing branch to learn & earn Nuts')).toBeTruthy();
     expect(screen.queryByText(/NFC Connected/)).toBeNull();
   });
 
@@ -35,11 +35,13 @@ describe('Squirrel & Tree journeys', () => {
   it('onboards into Forest with a goal and full letter', async () => {
     const user = userEvent.setup(); mount();
     await screen.findByRole('heading', { name: 'Let’s grow something that’s yours' });
+    expect((screen.getByLabelText('Squirrel name') as HTMLInputElement).value).toBe('');
+    await user.type(screen.getByLabelText('Squirrel name'), 'Biscuit');
     await user.type(screen.getByLabelText('Goal name'), 'Emergency fund');
     await user.type(screen.getByLabelText('What future are you building?'), 'My future');
     await user.click(screen.getByRole('button', { name: 'Start my forest' }));
     await screen.findByRole('heading', { name: 'A little progress, growing every day' });
-    expect(await api.getState()).toMatchObject({ initialized: true, goal: { targetAmount: 200 }, letter: { vision: 'My future' }, forest: { growthPercent: 0, treeStage: 'seedling' } });
+    expect(await api.getState()).toMatchObject({ initialized: true, pet: { name: 'Biscuit' }, goal: { targetAmount: 200 }, letter: { vision: 'My future' }, forest: { growthPercent: 0, treeStage: 'seedling' } });
   });
 
   it('saves a simple daily plan from the welcome check-in using the current budget API', async () => {
@@ -91,10 +93,10 @@ describe('Squirrel & Tree journeys', () => {
     expect((await api.getTransactions(new Date().toISOString().slice(0, 7))).transactions[0]?.reflection?.verdict).toBe('worth_it');
   });
 
-  it('rewards a lesson once with acorns and tree progress', async () => {
+  it('rewards a lesson once and unlocks the level-based features', async () => {
     const user = userEvent.setup(); await api.onboard(onboarding); const lessons = await api.getLessons(); const lesson = lessons.lessons[0]!; const correctId = 'save'; mount('/learn');
     await screen.findByRole('heading', { name: lesson.title }); await user.click(screen.getByLabelText('Record money actually set aside'));
-    await user.click(screen.getAllByRole('button', { name: 'Submit answer' })[0]!); await screen.findByText(/Collected \+5 acorns/);
+    await user.click(screen.getAllByRole('button', { name: 'Submit answer' })[0]!); await screen.findByText(/Reward: \+10 XP and \+5 acorns/);
     expect((await api.getLessons()).lessons.find(l => l.id === lesson.id)?.completed).toBe(true);
     const duplicate = await api.answerLesson({ requestId: createRequestId(), lessonId: lesson.id, selectedOptionId: correctId });
     expect(duplicate.reward).toEqual({ coins: 0, xp: 0 });

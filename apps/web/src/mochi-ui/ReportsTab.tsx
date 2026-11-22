@@ -1,71 +1,113 @@
 // @ts-nocheck
-const cad = (amount) => new Intl.NumberFormat('en-CA', {
-  style: 'currency', currency: 'CAD', minimumFractionDigits: 0, maximumFractionDigits: 2,
-}).format(amount);
+import * as Icons from './Icons';
+import { HardwareSquirrel } from './HardwareSquirrel';
+import { DailyBudgetCard } from './DailyBudgetCard';
+import { GoalsCard } from './GoalsCard';
+const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
-function getGoals() {
-  try {
-    const goals = JSON.parse(window.localStorage.getItem('mochi.landing-goals.v1') ?? '[]');
-    return Array.isArray(goals) ? goals.filter(goal => goal && typeof goal.title === 'string' &&
-      ['saving-goal', 'investing'].includes(goal.kind) && (goal.amount === null || typeof goal.amount === 'number')) : [];
-  } catch { return null; }
-}
+export function ReportsTab(props) {
+  const { activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  return (
+    <>
+          {activeTab === 'reports' && (
+            <div className="p-4 space-y-4">
+              {/* Daily Budget & Hardware Eye State Card (live, entered by the user) */}
+              <DailyBudgetCard {...props} />
 
-export function ReportsTab({ activeTab, dailySpent, dailyLimit, isUnderBudget, regretVoted, handleRegretPulse }) {
-  if (activeTab !== 'reports') return null;
-  const progress = dailyLimit > 0 ? Math.min(100, (dailySpent / dailyLimit) * 100) : 0;
-  const statusColor = isUnderBudget ? '#286840' : '#a54434';
-  const goals = getGoals() ?? [];
-  const exampleSavings = 180;
-  const exampleSavingsTarget = 200;
-  const savingsProgress = Math.round(exampleSavings / exampleSavingsTarget * 100);
+              {/* Bi-Weekly Investing & Savings Goals (live, entered by the user) */}
+              <GoalsCard {...props} />
 
-  return <section className="p-4" aria-labelledby="daily-spending-title">
-    <div className="mb-4 flex items-start justify-between gap-3">
-      <div><p className="text-[11px] font-bold uppercase tracking-wider text-[#2D6A4F]">Reports</p><h2 id="daily-spending-title" className="text-xl font-extrabold text-[#1B4332]">Your money</h2></div>
-      <span className="rounded-full bg-[#F4F0E6] px-2 py-1 text-[10px] font-bold text-[#77664E]">Demo</span>
-    </div>
-    <div className="grid grid-cols-2 gap-2.5">
-      <section className="col-span-2 rounded-2xl border border-[#E6DEC8] bg-white p-3.5 shadow-xs" aria-label="Daily spending report">
-        <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-          <strong className="text-[#1B4332]">Daily budget</strong>
-          <span className="font-bold text-[#34483B]">{cad(dailySpent)} <span className="font-normal text-[#8A8174]">of</span> {cad(dailyLimit)}</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-[#EFE6D5]" role="progressbar" aria-label="Daily budget used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
-          <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: statusColor }} />
-        </div>
-        <p className="mt-1.5 text-[11px] font-semibold" style={{ color: statusColor }}>{isUnderBudget ? 'Within limit' : 'Over limit'}</p>
-      </section>
-      <section className="rounded-2xl border border-[#E6DEC8] bg-white p-3" aria-label="Impulse purchase check-in">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#95602B]">Impulse buy</p>
-        <h3 className="mt-1 text-sm font-extrabold text-[#1B4332]">Campus Bookstore</h3>
-        <p className="text-xs text-[#536357]">{cad(22.5)} · still glad?</p>
-        {regretVoted ? <p className="mt-2 text-[11px] font-semibold text-[#286840]">Saved</p> : <div className="mt-2 flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => handleRegretPulse('worth_it')} className="rounded-lg bg-[#2D6A4F] px-2 py-1.5 text-[10px] font-bold text-white">Worth it</button>
-          <button type="button" onClick={() => handleRegretPulse('regret')} className="rounded-lg border border-[#D6CFC2] bg-[#FAF6EE] px-2 py-1.5 text-[10px] font-bold text-[#5C4033]">Not worth it</button>
-        </div>}
-      </section>
-      <section className="rounded-2xl border border-[#E6DEC8] bg-white p-3" aria-label="Payday savings example">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#95602B]">Payday</p>
-        <h3 className="mt-1 text-sm font-extrabold text-[#1B4332]">{cad(150)} saved</h3>
-        <p className="text-xs text-[#536357]">Within 4 hours</p>
-      </section>
-      <section className="rounded-2xl border border-[#E6DEC8] bg-white p-3" aria-label="Savings goal progress example">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#95602B]">Savings goal</p>
-        <div className="mt-1 flex items-center justify-between gap-2"><h3 className="text-sm font-extrabold text-[#1B4332]">{cad(exampleSavings)} / {cad(exampleSavingsTarget)}</h3><span className="text-[10px] font-bold text-[#536357]">{savingsProgress}%</span></div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#EFE6D5]" role="progressbar" aria-label="Savings goal progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={savingsProgress}><div className="h-full rounded-full bg-[#D97706]" style={{ width: `${savingsProgress}%` }} /></div>
-        <p className="mt-1 text-[10px] text-[#536357]">{cad(exampleSavingsTarget - exampleSavings)} to go</p>
-      </section>
-      <section className="rounded-2xl border border-[#E6DEC8] bg-white p-3" aria-label="Impulse pauses example">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#95602B]">Impulse pauses</p>
-        <h3 className="mt-1 text-sm font-extrabold text-[#1B4332]">3 buys paused</h3>
-        <p className="text-xs text-[#536357]">A little time to decide.</p>
-      </section>
-      {goals.map(goal => <section key={goal.id} className="rounded-2xl border border-[#DCE7D5] bg-[#F4F9F5] p-3" aria-label={goal.kind === 'investing' && /\btfsa\b/i.test(goal.title) ? 'TFSA goal' : 'Personal goal'}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#2D6A4F]">{goal.kind === 'investing' && /\btfsa\b/i.test(goal.title) ? 'TFSA goal' : goal.kind === 'investing' ? 'Investing goal' : 'Saving goal'}</p>
-        <h3 className="mt-1 text-sm font-extrabold text-[#1B4332]">{goal.title}</h3>
-        {typeof goal.amount === 'number' && <p className="text-xs text-[#536357]">Target {cad(goal.amount)}</p>}
-      </section>)}
-    </div>
-  </section>;
+              {/* 3-Layer Behavioral Tracking Engine Insights */}
+              <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs space-y-3">
+                <h3 className="text-sm font-extrabold text-[#1B4332] flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-[#D97706]" />
+                  Behavioral Tracking Signals
+                </h3>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="p-3 rounded-xl bg-[#FAF6EE] border border-[#E6DEC8]">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5C4033] mb-1">
+                      <Moon className="w-3.5 h-3.5 text-[#4338CA]" />
+                      Late-Night Ratio
+                    </div>
+                    <div className="text-lg font-extrabold text-[#1B4332]">4%</div>
+                    <div className="text-[10px] text-[#059669] font-semibold">
+                      ↓ Down 18% this week
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF6EE] border border-[#E6DEC8]">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5C4033] mb-1">
+                      <Zap className="w-3.5 h-3.5 text-[#D97706]" />
+                      Impulse Resistance
+                    </div>
+                    <div className="text-lg font-extrabold text-[#1B4332]">86 / 100</div>
+                    <div className="text-[10px] text-[#059669] font-semibold">
+                      3 carts abandoned (+60 🌰)
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF6EE] border border-[#E6DEC8]">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5C4033] mb-1">
+                      <Clock className="w-3.5 h-3.5 text-[#2D6A4F]" />
+                      Payday Latency
+                    </div>
+                    <div className="text-lg font-extrabold text-[#1B4332]">Healthy</div>
+                    <div className="text-[10px] text-[#57534E]">
+                      Savings moved before wants
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#FAF6EE] border border-[#E6DEC8]">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5C4033] mb-1">
+                      <RefreshCw className="w-3.5 h-3.5 text-[#B45309]" />
+                      Velocity Clusters
+                    </div>
+                    <div className="text-lg font-extrabold text-[#1B4332]">0 Bursts</div>
+                    <div className="text-[10px] text-[#059669] font-semibold">
+                      No stress sprees in 6 days
+                    </div>
+                  </div>
+                </div>
+
+                {/* 48-Hr Regret Pulse Card */}
+                <div className="p-3.5 rounded-xl bg-[#F8F5EE] border border-[#E2D7C1]">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-[#92400E] mb-1">
+                    48-Hour Regret Pulse
+                  </div>
+                  <p className="text-xs font-semibold text-[#1F2923] mb-2.5">
+                    Two days ago you spent <span className="underline">$22.50 at Campus Bookstore</span>. Still glad you bought it?
+                  </p>
+                  {regretVoted ? (
+                    <div className="text-xs font-bold text-[#2D6A4F] flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Recorded in your personal Regret Profile (+20 🌰)
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRegretPulse('worth_it')}
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#2D6A4F] text-white text-xs font-bold hover:bg-[#1B4332] transition"
+                      >
+                        👍 Worth It (+20 🌰)
+                      </button>
+                      <button
+                        onClick={() => handleRegretPulse('regret')}
+                        className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#D6CFC2] text-[#5C4033] text-xs font-bold hover:bg-[#EFE6D5] transition"
+                      >
+                        👎 Buyer’s Remorse
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 3: HARDWARE PET CUSTOMIZATION & SERVO/EYE CONTROLS    */}
+          {/* ========================================================= */}
+
+    </>
+  );
 }

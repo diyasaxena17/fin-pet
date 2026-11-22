@@ -157,7 +157,7 @@ export function CheckinSheet({ onClose }: { onClose(): void }) {
   return <Sheet tag="ACTIVE CONTEXT" title="Vibes & regret" onClose={onClose} tab={tab} onTab={setTab}
     tabs={[{ id: 'vibes', label: 'Vibes', icon: '🧠' }, { id: 'regret', label: 'Regret profile', icon: '👍' }]}>
     {tab === 'vibes' ? <>
-      <Callout title={`${derived.queue.length} purchase${derived.queue.length === 1 ? '' : 's'} to tag`} reward={REWARDS.vibe.nuts}>One tap per purchase. Tagging updates your breakdown instantly and earns +{REWARDS.vibe.nuts} acorns the first time.</Callout>
+      <Callout title={`${derived.queue.length} purchase${derived.queue.length === 1 ? '' : 's'} to tag`} reward={REWARDS.vibe.nuts}>One tap per purchase. Tagging updates your breakdown instantly and earns +{REWARDS.vibe.nuts} Nuts the first time.</Callout>
       <div className="wo-panel"><p className="wo-eyebrow">WHY YOU BOUGHT</p>
         {([...VIBES.map((v) => v.id), 'untagged'] as const).map((k) => <Bar key={k} label={vibeLabel(k)} value={derived.vibeStats[k].cents}
           max={Math.max(...Object.values(derived.vibeStats).map((v) => v.cents), 1)} tone={k === 'untagged' ? 'amber' : 'green'} right={`${derived.vibeStats[k].count} · ${cents(derived.vibeStats[k].cents)}`} />)}</div>
