@@ -1,51 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { DailyReport } from '@mochi/contracts';
+import { Feedback, LoadingState } from '../components/Feedback';
 import { PageShell } from '../components/PageShell';
 import { api } from '../lib/api';
 import { useAppState } from '../lib/appState';
 
 const cad = (value: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(value);
-
-/** NFC/QR opens a read-only report. Only the explicit button grants a check-in. */
+/** NFC/QR report is read-only until the visitor explicitly completes check-in. */
 export function CheckIn() {
-  const { state, busy, mutate } = useAppState();
-  const [report, setReport] = useState<DailyReport | null>(null);
-  const [error, setError] = useState('');
-  const [version, setVersion] = useState(0);
-  const [success, setSuccess] = useState(false);
-  useEffect(() => {
-    if (!state?.initialized) return;
-    let active = true;
-    setReport(null);
-    setError('');
-    api.getDailyReport().then((value) => { if (active) setReport(value); }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Unable to load your daily report.');
-    });
-    return () => { active = false; };
-  }, [version, state?.initialized]);
-
+  const { state, busy, mutate } = useAppState(); const [report, setReport] = useState<DailyReport | null>(null); const [error, setError] = useState(''); const [version, setVersion] = useState(0); const [success, setSuccess] = useState(false);
+  const load = useCallback(() => { let active = true; setReport(null); setError(''); api.getDailyReport().then(v => { if (active) setReport(v); }).catch((e: unknown) => { if (active) setError(e instanceof Error ? e.message : 'Unable to load the daily report.'); }); return () => { active = false; }; }, [version]); useEffect(() => { if (state?.initialized) return load(); }, [state?.initialized, load]);
   if (!state?.initialized) return <Navigate to="/onboarding" replace />;
-  return <PageShell title="Your daily check-in">
-    <p className="mb-4">Opening this report never spends acorns or claims a reward.</p>
-    {success ? <p role="status" className="my-4 font-semibold text-emerald-800">You’re checked in for today.</p> : null}
-    {error ? <div role="alert"><p>{error}</p><button className="mt-3" onClick={() => setVersion((value) => value + 1)}>Retry report</button></div>
-      : report === null ? <p role="status">Loading your daily report…</p> : <>
-        <p className="eyebrow">{report.date}</p>
-        <p className="my-3">Recorded spending today: <strong>{cad(report.spentToday)}</strong></p>
-        {report.dailyLimit === null ? <p>No daily target is configured yet.</p> : <p>Daily target: {cad(report.dailyLimit)}. {report.underDailyLimit ? 'Recorded spending is within your target.' : 'Recorded spending is above your target.'}</p>}
-        <p className="my-3">{report.insight}</p>
-        <p>Current streak: {report.streakDays} {report.streakDays === 1 ? 'day' : 'days'}.</p>
-        {report.completedToday ? <p className="mt-4 font-semibold">Today’s reward has already been claimed.</p>
-          : report.availableReward.xp === 0 ? <p className="mt-4">Daily check-ins unlock at 100 XP.</p>
-            : <button className="mt-5" disabled={busy} onClick={async () => {
-              if (await mutate('quest:daily-check-in', async (requestId) => (await api.checkIn({ requestId })).state)) {
-                setSuccess(true);
-                setVersion((value) => value + 1);
-              }
-            }}>{busy ? 'Checking in…' : `Complete check-in · +${report.availableReward.coins} acorns`}</button>}
-        <button className="secondary-button mt-4" disabled={busy} onClick={() => { setSuccess(false); setVersion((value) => value + 1); }}>Refresh report</button>
-      </>}
-    <Link className="mt-5 block font-semibold text-violet-700" to="/">Back to dashboard</Link>
+  return <PageShell eyebrow="NFC / QR DAILY REPORT" title="A small forest check-in"><p>Opening this page is read-only. It does not record spending, claim a reward, or trigger a device reaction.</p>
+    {success && <Feedback kind="success">Check-in complete! Your daily reward has been added. A little icing sugar for your progress.</Feedback>}
+    {error ? <><Feedback kind="error">{error}</Feedback><button className="button--quiet" onClick={() => setVersion(v => v + 1)}>Retry report</button></> : report === null ? <LoadingState>Loading your report…</LoadingState> : <>
+      <p className="eyebrow">{report.date}</p><p className="my-3">Recorded spending today: <strong>{cad(report.spentToday)}</strong></p>
+      {report.dailyLimit === null ? <p>No daily plan is set. You can add one in Budget.</p> : <p>Daily plan: {cad(report.dailyLimit)}. {report.underDailyLimit ? 'Recorded spending is within your plan.' : 'Recorded spending is above your plan.'}</p>}
+      {report.achievement && <p className="form-section mt-4"><strong>Today’s achievement</strong><br />{report.achievement}</p>}<p className="feedback feedback--info">A note for today: {report.insight}</p><p>Current streak: {report.streakDays} days.</p>
+      {report.completedToday ? <Feedback kind="info">Today’s check-in is already complete.</Feedback> : report.availableReward.xp === 0 ? <Feedback kind="info">Daily check-ins unlock at Level 2.</Feedback> : <button className="mt-4" disabled={busy} onClick={async () => { const ok = await mutate('checkin:daily', async requestId => { const result = await api.checkIn({ requestId }); const latest = await api.getDailyReport(); setReport(latest); return result.state; }); if (ok) { setSuccess(true); setVersion(v => v + 1); } }}>{busy ? 'Completing check-in…' : `Complete check-in · +${report.availableReward.coins} acorns`}</button>}
+      <button className="button--quiet ml-2 mt-4" disabled={busy} onClick={() => { setSuccess(false); setVersion(v => v + 1); }}>Refresh report</button>
+    </>}
+    <div className="action-row"><Link className="text-link" to="/">Back to Forest</Link><Link className="text-link" to="/feed">Feed your squirrel</Link></div>
   </PageShell>;
 }

@@ -40,7 +40,7 @@ describe('name and voice settings', () => {
     expect(await api.getState()).toEqual(before.initialized ? { ...before,
       pet: { ...before.pet, name: 'Clover' }, preferences: { voice: 'calm' } } : before);
     await user.click(screen.getByRole('link', { name: 'Back to dashboard' }));
-    await screen.findByText('Clover is feeling neutral today');
+    await screen.findByText('Clover is here with you.');
     await user.click(screen.getByRole('link', { name: 'Settings' }));
     expect(((await screen.findByLabelText('Squirrel name')) as HTMLInputElement).value).toBe('Clover');
     expect((screen.getByRole('radio', { name: /Calm/ }) as HTMLInputElement).checked).toBe(true);
