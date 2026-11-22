@@ -8,6 +8,9 @@ import { SkillTreeTab } from './SkillTreeTab';
 import { ReportsTab } from './ReportsTab';
 import { PetTab } from './PetTab';
 import { useSquirrel } from '../hardware/SquirrelProvider';
+import { useOptionalAppState } from '../lib/appState';
+import { api } from '../lib/api';
+import { createRequestId } from '../lib/requestId';
 
 /** On-screen moods → the physical squirrel's letters (see hardware-connection/squirrel.ino). */
 const HARDWARE_LETTER = { happy: 'p', worried: 'w', alert: 't' };
@@ -22,6 +25,7 @@ const writePetName = (name) => { try { localStorage.setItem(PET_NAME_KEY, name);
 // --- MAIN APPLICATION ---
 export function App() {
   const squirrel = useSquirrel();
+  const app = useOptionalAppState();
   // Navigation & UI Modals
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' | 'reports' | 'pet'
   const [showNfcReportModal, setShowNfcReportModal] = useState(true);
@@ -40,14 +44,18 @@ export function App() {
   const [hardwareMood, setHardwareMood] = useState('happy'); // 'happy' | 'alert' | 'worried'
   const [isWagging, setIsWagging] = useState(true);
   const [speechBubble, setSpeechBubble] = useState(
-    'NFC tapped! You stayed $13 under budget yesterday & resisted a $24 late-night order!'
+    'Hi! Set your daily budget in Reports, then tap the NFC chip to wake me up.'
   );
 
   // Gamification & Behavioral Finance State
   const [goldenNuts, setGoldenNuts] = useState(385);
   const [branches, setBranches] = useState(INITIAL_BRANCHES);
-  const [dailySpent, setDailySpent] = useState(32);
-  const [dailyLimit, setDailyLimit] = useState(45);
+  // Live budget from the backend. Nothing is preset: the daily budget is entered in the app.
+  const backend = app?.state?.initialized ? app.state : null;
+  const dailyLimit = backend?.budgetSummary.dailyLimit ?? null;
+  const dailySpent = backend?.budgetSummary.spentToday ?? 0;
+  const hasBudget = dailyLimit !== null;
+  const money = (value) => `$${Number(value).toFixed(2).replace(/\.00$/, '')}`;
   const [vibeTagged, setVibeTagged] = useState(null); // null | 'planned' | 'hungry' | 'stressed' | 'treat'
   const [regretVoted, setRegretVoted] = useState(null); // null | 'worth_it' | 'regret'
 
@@ -80,10 +88,12 @@ export function App() {
     if (!wakeCount) return;
     setShowNfcReportModal(true);
     setHardwareMood(isUnderBudget ? 'happy' : 'worried');
-    setIsWagging(true);
-    setSpeechBubble(isUnderBudget
-      ? `NFC tapped! You're $${dailyLimit - dailySpent} under today's budget. Happy dance!`
-      : `NFC tapped! We're $${dailySpent - dailyLimit} over today's budget. Let's slow down tonight.`);
+    setIsWagging(isUnderBudget);
+    setSpeechBubble(!hasBudget
+      ? `NFC tapped! Set a daily budget in Reports and I'll keep an eye on it.`
+      : isUnderBudget
+        ? `NFC tapped! You're ${money(dailyLimit - dailySpent)} under today's budget. Happy dance!`
+        : `NFC tapped! We're ${money(dailySpent - dailyLimit)} over today's budget. Let's slow down tonight.`);
     const timer = setTimeout(() => setIsWagging(false), 2800);
     return () => clearTimeout(timer);
   }, [wakeCount]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,7 +111,7 @@ export function App() {
     0
   );
   const treeLevel = Math.min(6, 3 + Math.floor(goldenNuts / 120));
-  const isUnderBudget = dailySpent <= dailyLimit;
+  const isUnderBudget = !hasBudget || dailySpent <= dailyLimit;
 
   // Handle Vibe Check-In (1-Tap Emotional Context)
   const handleVibeCheck = (vibeId, label) => {
@@ -211,25 +221,50 @@ export function App() {
     }
   };
 
-  // Simulate Budget State Preview (Under vs Over Limit)
-  const handleToggleBudgetSimulation = () => {
-    if (dailySpent <= dailyLimit) {
-      setDailySpent(54);
-      setHardwareMood('worried');
-      setIsWagging(false);
-      setSpeechBubble(
-        `Uh oh! $54 spent today ($9 over your $45 daily cap). Want to freeze late-night checkout apps?`
-      );
-    } else {
-      setDailySpent(32);
-      triggerCelebration(
-        `Back under budget ($32 / $45)! Doing my happy tail-wag dance!`,
-        'happy'
-      );
-    }
+  // Save the daily budget the user types in (creates the account first if needed).
+  const saveDailyBudget = async (amount) => {
+    if (!app) return false;
+    const ok = await app.mutate('mochi-ui:daily-budget', async () => {
+      let current = app.state;
+      if (!current?.initialized) {
+        current = await api.onboard({ petName: petName || 'Mochi', goalTitle: 'Savings goal', goalTarget: 200, letter: { vision: '', why: '', reminder: '' } });
+      }
+      const budget = current.budgetSummary;
+      const monthlyLimit = budget.monthlyLimit !== null && budget.monthlyLimit >= amount ? budget.monthlyLimit : Math.round(amount * 30 * 100) / 100;
+      const categoryLimits = Object.fromEntries(budget.categories.filter((c) => c.limit !== null).map((c) => [c.id, c.limit]));
+      await api.updateBudgets({ month: budget.month, monthlyLimit, dailyLimit: amount, ...(Object.keys(categoryLimits).length ? { categoryLimits } : {}) });
+      const next = await api.getState();
+      if (!next.initialized) throw new Error('Could not refresh your budget.');
+      return next;
+    });
+    if (ok) triggerCelebration(`Daily budget set to ${money(amount)}! Stay under it and I'll do my happy dance.`, 'happy');
+    return ok;
   };
 
-  const uiProps = { squirrel, activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  // Record a purchase for today; the squirrel worries if it pushes spending over budget.
+  const logPurchase = async (name, amount, category) => {
+    if (!app || !backend) return false;
+    const requestId = createRequestId();
+    const ok = await app.mutate(`mochi-ui:purchase:${requestId}`, async () => {
+      await api.recordTransaction({ requestId, name, amount, category, occurredAt: new Date().toISOString() });
+      const next = await api.getState();
+      if (!next.initialized) throw new Error('Could not refresh your spending.');
+      return next;
+    });
+    if (ok) {
+      const spent = dailySpent + amount;
+      const over = hasBudget && spent > dailyLimit;
+      setHardwareMood(over ? 'worried' : 'happy');
+      setIsWagging(false);
+      setSpeechBubble(over
+        ? `${name} for ${money(amount)} puts us ${money(spent - dailyLimit)} over today's budget. Let's pause the extras.`
+        : `Logged ${name} (${money(amount)}). ${money(dailyLimit - spent)} left today!`);
+      showToast(`Logged ${name}: ${money(amount)}`);
+    }
+    return ok;
+  };
+
+  const uiProps = { squirrel, hasBudget, money, saveDailyBudget, logPurchase, budgetBusy: app?.busy ?? false, budgetError: app?.error ?? '', canSave: Boolean(app), activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">
@@ -349,8 +384,8 @@ export function App() {
 
             {/* Interactive Daily Budget Pill */}
             <button
-              onClick={handleToggleBudgetSimulation}
-              title="Tap to preview Under-Budget vs Over-Budget hardware reaction"
+              onClick={() => setActiveTab('reports')}
+              title="Set or check today's daily budget"
               className={`px-3 py-1.5 rounded-xl border text-right transition active:scale-95 ${
                 isUnderBudget
                   ? 'bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]'
@@ -361,8 +396,8 @@ export function App() {
                 Daily Cap
               </div>
               <div className="text-xs font-extrabold tabular-nums">
-                ${dailySpent} / ${dailyLimit}{' '}
-                <span className="ml-0.5">{isUnderBudget ? '✓' : '!'}</span>
+                {hasBudget ? <>{money(dailySpent)} / {money(dailyLimit)}{' '}
+                <span className="ml-0.5">{isUnderBudget ? '✓' : '!'}</span></> : 'Set budget'}
               </div>
             </button>
           </div>
@@ -440,12 +475,13 @@ export function App() {
                       {petName}’s Daily Check-In!
                     </h2>
                     <p className="text-xs text-[#D1FAE5]">
-                      Tail servo wagging • Under budget streak: 5 days
+                      {!hasBudget ? 'Daily budget not set yet' : isUnderBudget ? 'Under budget today • Tail wagging' : 'Over budget today • Worried eyes'}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowNfcReportModal(false)}
+                  aria-label="Close daily check-in"
                   className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 transition"
                 >
                   <X className="w-4 h-4" />
@@ -460,9 +496,15 @@ export function App() {
                   </div>
                   <ul className="space-y-1.5 text-xs text-[#374151]">
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />
+                      {hasBudget && !isUnderBudget
+                        ? <AlertCircle className="w-4 h-4 text-[#DC2626] shrink-0" />
+                        : <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />}
                       <span>
-                        Stayed under daily budget (<strong>${dailySpent}</strong> of ${dailyLimit})
+                        {!hasBudget
+                          ? 'No daily budget yet. Set one in Reports.'
+                          : isUnderBudget
+                            ? <>Stayed under daily budget (<strong>{money(dailySpent)}</strong> of {money(dailyLimit)})</>
+                            : <>Over daily budget (<strong>{money(dailySpent)}</strong> of {money(dailyLimit)})</>}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">

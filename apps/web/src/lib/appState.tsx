@@ -57,3 +57,8 @@ export function useAppState() {
   if (!context) throw new Error('AppProvider is required');
   return context;
 }
+
+/** Like useAppState, but returns null outside AppProvider (for screens that also run standalone). */
+export function useOptionalAppState() {
+  return useContext(AppContext);
+}
