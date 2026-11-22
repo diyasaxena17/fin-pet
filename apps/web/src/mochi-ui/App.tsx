@@ -7,6 +7,9 @@ import { playPetChime } from './playPetChime';
 import { SkillTreeTab } from './SkillTreeTab';
 import { ReportsTab } from './ReportsTab';
 import { PetTab } from './PetTab';
+import { LandingJourneys } from './LandingJourneys';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { WinterOak } from '../pages/WinterOak';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export const PET_NAME_KEY = 'mochi.petName';
@@ -17,9 +20,12 @@ const writePetName = (name) => { try { localStorage.setItem(PET_NAME_KEY, name);
 
 // --- MAIN APPLICATION ---
 export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const showWinterOak = location.pathname === '/oak';
   // Navigation & UI Modals
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' | 'reports' | 'pet'
-  const [showNfcReportModal, setShowNfcReportModal] = useState(true);
+  const [showNfcReportModal, setShowNfcReportModal] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
 
@@ -35,13 +41,27 @@ export function App() {
   const [hardwareMood, setHardwareMood] = useState('happy'); // 'happy' | 'alert' | 'worried'
   const [isWagging, setIsWagging] = useState(true);
   const [speechBubble, setSpeechBubble] = useState(
-    'NFC tapped! You stayed $13 under budget yesterday & resisted a $24 late-night order!'
+    'Your companion is ready for a check-in.'
   );
 
   // Gamification & Behavioral Finance State
-  const [goldenNuts, setGoldenNuts] = useState(385);
+  const [acorns, setAcorns] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('mochi.tree.acorns.v1');
+      return saved === null ? 385 : Math.max(0, Number(saved) || 0);
+    }
+    catch { return 385; }
+  });
+  const [acornsCollected, setAcornsCollected] = useState(() => {
+    try { return Math.max(385, Number(window.localStorage.getItem('mochi.tree.acorns-collected.v1')) || 0); }
+    catch { return 385; }
+  });
+  const [plantedAcorns, setPlantedAcorns] = useState(() => {
+    try { return Math.max(0, Number(window.localStorage.getItem('mochi.tree.planted-acorns.v1')) || 0); }
+    catch { return 0; }
+  });
   const [branches, setBranches] = useState(INITIAL_BRANCHES);
-  const [dailySpent, setDailySpent] = useState(32);
+  const [dailySpent, setDailySpent] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(45);
   const [vibeTagged, setVibeTagged] = useState(null); // null | 'planned' | 'hungry' | 'stressed' | 'treat'
   const [regretVoted, setRegretVoted] = useState(null); // null | 'worth_it' | 'regret'
@@ -74,41 +94,59 @@ export function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Calculate tree level & mastery from nuts + completed lessons
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('mochi.tree.acorns.v1', String(acorns));
+      window.localStorage.setItem('mochi.tree.acorns-collected.v1', String(acornsCollected));
+      window.localStorage.setItem('mochi.tree.planted-acorns.v1', String(plantedAcorns));
+    } catch { /* keep acorn collection in this session */ }
+  }, [acorns, acornsCollected, plantedAcorns]);
+
+  // Acorns collected can unlock branches; planting spends one acorn and grows the canopy.
   const totalLessons = branches.reduce((acc, b) => acc + b.lessons.length, 0);
   const completedLessons = branches.reduce(
     (acc, b) => acc + b.lessons.filter((l) => l.completed).length,
     0
   );
-  const treeLevel = Math.min(6, 3 + Math.floor(goldenNuts / 120));
+  const canopyGrowth = Math.min(plantedAcorns, 12);
+  const collectAcorns = (amount) => {
+    setAcorns((current) => current + amount);
+    setAcornsCollected((current) => current + amount);
+  };
+  const plantAcorn = () => {
+    if (acorns < 1) return;
+    setAcorns((current) => current - 1);
+    setPlantedAcorns((current) => current + 1);
+    showToast('Acorn planted! Your tree is growing.');
+  };
   const isUnderBudget = dailySpent <= dailyLimit;
 
   // Handle Vibe Check-In (1-Tap Emotional Context)
   const handleVibeCheck = (vibeId, label) => {
     if (vibeTagged) return;
     setVibeTagged(vibeId);
-    setGoldenNuts((n) => n + 15);
-    triggerCelebration(`Thanks for tagging "${label}"! +15 Golden Nuts added to our winter oak!`, 'happy');
-    showToast('+15 Golden Nuts earned for 1-Tap Vibe Check!');
+    collectAcorns(15);
+    triggerCelebration(`Thanks for tagging "${label}"! +15 acorns added to your collection.`, 'happy');
+    showToast('+15 acorns collected for your tree!');
   };
 
   // Handle 48-Hr Regret Pulse
   const handleRegretPulse = (choice) => {
     if (regretVoted) return;
     setRegretVoted(choice);
-    setGoldenNuts((n) => n + 20);
+    collectAcorns(20);
     const msg =
       choice === 'worth_it'
-        ? 'Logged as Worth It! Your Regret Profile is getting sharper (+20 Nuts).'
-        : 'Noted! I’ll gently nudge you next time you browse that store late at night (+20 Nuts).';
+        ? 'Logged as Worth It! Your Regret Profile is getting sharper (+20 acorns).'
+        : 'Noted! I’ll gently nudge you next time you browse that store late at night (+20 acorns).';
     triggerCelebration(msg, 'happy');
-    showToast('+20 Golden Nuts for 48-Hr Regret Pulse!');
+    showToast('+20 acorns collected!');
   };
 
   // Open Branch Drawer
   const handleSelectBranch = (branch) => {
     if (!branch.unlocked) {
-      if (goldenNuts >= branch.unlockCost) {
+      if (acornsCollected >= branch.unlockCost) {
         setBranches((prev) =>
           prev.map((b) => (b.id === branch.id ? { ...b, unlocked: true } : b))
         );
@@ -119,10 +157,10 @@ export function App() {
         showToast(`Unlocked ${branch.title}!`);
       } else {
         triggerCelebration(
-          `We need ${branch.unlockCost - goldenNuts} more Golden Nuts to grow the "${branch.title}" branch!`,
+          `Collect ${branch.unlockCost - acornsCollected} more acorns to grow the "${branch.title}" branch.`,
           'alert'
         );
-        showToast(`Need ${branch.unlockCost} Golden Nuts to unlock`);
+        showToast(`Collect ${branch.unlockCost} acorns to unlock this branch`);
         return;
       }
     }
@@ -162,7 +200,7 @@ export function App() {
     });
 
     if (!lesson.completed) {
-      setGoldenNuts((n) => n + lesson.reward);
+      collectAcorns(lesson.reward);
       setBranches((prev) =>
         prev.map((b) =>
           b.id === selectedBranch.id
@@ -182,10 +220,10 @@ export function App() {
         )
       }));
       triggerCelebration(
-        `Lesson mastered! +${lesson.reward} Golden Nuts stored & our oak canopy grew thicker!`,
+        `Lesson mastered! +${lesson.reward} acorns collected. Plant one to grow your oak!`,
         'happy'
       );
-      showToast(`+${lesson.reward} Golden Nuts Earned!`);
+      showToast(`+${lesson.reward} acorns collected!`);
     } else {
       triggerCelebration('Great refresher! Practice keeps our winter stash strong.', 'happy');
     }
@@ -209,7 +247,7 @@ export function App() {
     }
   };
 
-  const uiProps = { activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  const uiProps = { activeTab, setActiveTab, branches, acorns, acornsCollected, plantedAcorns, canopyGrowth, plantAcorn, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, setDailySpent, dailyLimit, setDailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">
@@ -294,7 +332,7 @@ export function App() {
           <div className="flex items-center justify-end gap-2 mb-2.5">
             {/* NFC Connected badge omitted as requested. */}
 
-            {/* Quick Daily Report Trigger + Golden Nuts Counter */}
+            {/* Quick report and collected acorns */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowNfcReportModal(true)}
@@ -302,10 +340,10 @@ export function App() {
               >
                 Daily Pulse
               </button>
-              <div className="flex items-center gap-1 bg-gradient-to-r from-[#FEF3C7] to-[#FDE68A] border border-[#F59E0B]/40 px-2.5 py-1 rounded-full shadow-xs">
+              <div aria-label={`${acorns} acorns ready to plant`} className="flex items-center gap-1 bg-gradient-to-r from-[#FEF3C7] to-[#FDE68A] border border-[#F59E0B]/40 px-2.5 py-1 rounded-full shadow-xs">
                 <span className="text-sm leading-none">🌰</span>
                 <span className="text-xs font-extrabold text-[#92400E] tabular-nums">
-                  {goldenNuts}
+                  {acorns}
                 </span>
               </div>
             </div>
@@ -314,15 +352,15 @@ export function App() {
           {/* Status Strip: Tree Stage + Daily Budget Pill */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-[#2D6A4F]/10 border border-[#2D6A4F]/20 flex items-center justify-center text-[#1B4332] font-bold text-xs">
-                Lv.{treeLevel}
+              <div className="w-8 h-8 rounded-xl bg-[#2D6A4F]/10 border border-[#2D6A4F]/20 flex items-center justify-center text-[#1B4332] font-bold text-xs" aria-label={`${plantedAcorns} acorns planted`}>
+                <TreePine className="h-4 w-4" aria-hidden="true" />
               </div>
               <div>
                 <h1 className="text-sm font-extrabold text-[#1B4332] leading-tight">
-                  {petName}’s Winter Oak
+                  {petName ? `${petName}’s` : 'Your'} Winter Oak
                 </h1>
                 <p className="text-[11px] text-[#6B5E51]">
-                  {completedLessons}/{totalLessons} Financial Skills Sprouted
+                  {plantedAcorns} acorns planted Â· {completedLessons}/{totalLessons} skills grown
                 </p>
               </div>
             </div>
@@ -353,18 +391,19 @@ export function App() {
           {/* ========================================================= */}
           {/* TAB 1: INTERACTIVE FINANCIAL SKILL TREE (LANDING VIEW)    */}
           {/* ========================================================= */}
-          <SkillTreeTab {...uiProps} />
-
-          <ReportsTab {...uiProps} />
-
-          <PetTab {...uiProps} />
+          {showWinterOak ? <WinterOak embedded /> : <>
+            <SkillTreeTab {...uiProps} />
+            {activeTab === 'tree' && <LandingJourneys />}
+            <ReportsTab {...uiProps} />
+            <PetTab {...uiProps} />
+          </>}
 
         </main>
 
         {/* BOTTOM NAVIGATION BAR */}
         <nav className="absolute bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-[#E6DEC8] px-4 py-2 flex items-center justify-around z-30">
           <button
-            onClick={() => setActiveTab('tree')}
+            onClick={() => { setActiveTab('tree'); if (showWinterOak) navigate('/'); }}
             className={`flex flex-col items-center gap-1 py-1.5 px-4 rounded-2xl transition ${
               activeTab === 'tree'
                 ? 'bg-[#1B4332] text-white shadow-xs'
@@ -376,7 +415,7 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab('reports')}
+            onClick={() => { setActiveTab('reports'); if (showWinterOak) navigate('/'); }}
             className={`flex flex-col items-center gap-1 py-1.5 px-4 rounded-2xl transition ${
               activeTab === 'reports'
                 ? 'bg-[#1B4332] text-white shadow-xs'
@@ -388,7 +427,7 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab('pet')}
+            onClick={() => { setActiveTab('pet'); if (showWinterOak) navigate('/'); }}
             className={`flex flex-col items-center gap-1 py-1.5 px-4 rounded-2xl transition ${
               activeTab === 'pet'
                 ? 'bg-[#1B4332] text-white shadow-xs'
@@ -396,7 +435,7 @@ export function App() {
             }`}
           >
             <Bot className="w-5 h-5" />
-            <span className="text-[11px] font-bold">{petName} Pet</span>
+            <span className="text-[11px] font-bold">Profile</span>
           </button>
         </nav>
 
@@ -417,7 +456,7 @@ export function App() {
                       NFC Tap Activated
                     </div>
                     <h2 className="text-base font-extrabold leading-tight">
-                      {petName}’s Daily Check-In!
+                      {petName ? `${petName}’s` : 'Your'} Daily Check-In!
                     </h2>
                     <p className="text-xs text-[#D1FAE5]">
                       Tail servo wagging • Under budget streak: 5 days
@@ -426,6 +465,7 @@ export function App() {
                 </div>
                 <button
                   onClick={() => setShowNfcReportModal(false)}
+                  aria-label="Close daily pulse"
                   className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 transition"
                 >
                   <X className="w-4 h-4" />
@@ -469,7 +509,7 @@ export function App() {
                   {vibeTagged ? (
                     <div className="py-2 px-3 rounded-xl bg-[#ECFDF5] text-[#065F46] text-xs font-bold flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-[#059669]" />
-                      <span>Tagged! +15 Golden Nuts added to {petName}’s stash.</span>
+                      <span>Tagged! +15 acorns added to {petName ? `${petName}’s` : 'your'} collection.</span>
                     </div>
                   ) : (
                     <div className="grid grid-cols-4 gap-1.5">
@@ -518,7 +558,7 @@ export function App() {
                   onClick={() => setShowNfcReportModal(false)}
                   className="w-full py-3 rounded-2xl bg-[#1B4332] hover:bg-[#2D6A4F] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 transition active:scale-98"
                 >
-                  <span>Explore {petName}’s Skill Tree</span>
+                  <span>Explore {petName ? `${petName}’s` : 'your'} Skill Tree</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -673,7 +713,7 @@ export function App() {
                       >
                         {currentLesson.completed
                           ? 'Check Answer Again'
-                          : `Submit & Collect +${currentLesson.reward} Golden Nuts`}
+                          : `Submit & Collect +${currentLesson.reward} acorns`}
                       </button>
                     </div>
                   </div>

@@ -112,6 +112,6 @@ function SettingsForm({ savedName, savedVoice }: { savedName: string; savedVoice
         }}>Reset changes</button>
       </div>
     </form>
-    <Link className="mt-6 inline-block font-semibold text-violet-700" to="/">Back to dashboard</Link>
+    <Link className="mt-6 inline-block font-semibold text-violet-700" to="/?legacy=1">Back to dashboard</Link>
   </PageShell>;
 }
