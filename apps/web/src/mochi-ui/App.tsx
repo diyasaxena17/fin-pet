@@ -10,7 +10,7 @@ import { PetTab } from './PetTab';
 import { useSquirrel } from '../hardware/SquirrelProvider';
 import { useOptionalAppState } from '../lib/appState';
 import { api } from '../lib/api';
-import { createRequestId } from '../lib/requestId';
+import { todaysBankTransactions } from './bankFeed';
 
 /** On-screen moods → the physical squirrel's letters (see hardware-connection/squirrel.ino). */
 const HARDWARE_LETTER = { happy: 'p', worried: 'w', alert: 't' };
@@ -241,30 +241,32 @@ export function App() {
     return ok;
   };
 
-  // Record a purchase for today; the squirrel worries if it pushes spending over budget.
-  const logPurchase = async (name, amount, category) => {
-    if (!app || !backend) return false;
-    const requestId = createRequestId();
-    const ok = await app.mutate(`mochi-ui:purchase:${requestId}`, async () => {
-      await api.recordTransaction({ requestId, name, amount, category, occurredAt: new Date().toISOString() });
+  // Spending is read from the bank, never typed in. Plaid is planned but not connected yet,
+  // so a sample feed of today's card purchases stands in for it.
+  const [bankFeed, setBankFeed] = useState(() => todaysBankTransactions());
+  const [bankSynced, setBankSynced] = useState(false);
+  const bankSyncStarted = React.useRef(false);
+  const syncBank = async () => {
+    if (!app?.state?.initialized) return false;
+    const feed = todaysBankTransactions();
+    const ok = await app.mutate('mochi-ui:bank-sync', async () => {
+      const { transactions } = await api.getTransactions(app.state.budgetSummary.month);
+      const already = new Set(transactions.map((t) => t.id));
+      for (const { id, ...input } of feed) if (!already.has(id)) await api.recordTransaction(input);
       const next = await api.getState();
       if (!next.initialized) throw new Error('Could not refresh your spending.');
       return next;
     });
-    if (ok) {
-      const spent = dailySpent + amount;
-      const over = hasBudget && spent > dailyLimit;
-      setHardwareMood(over ? 'worried' : 'happy');
-      setIsWagging(false);
-      setSpeechBubble(over
-        ? `${name} for ${money(amount)} puts us ${money(spent - dailyLimit)} over today's budget. Let's pause the extras.`
-        : `Logged ${name} (${money(amount)}). ${money(dailyLimit - spent)} left today!`);
-      showToast(`Logged ${name}: ${money(amount)}`);
-    }
+    if (ok) { setBankFeed(feed); setBankSynced(true); }
     return ok;
   };
+  useEffect(() => {
+    if (!backend || bankSyncStarted.current) return;
+    bankSyncStarted.current = true;
+    void syncBank();
+  }, [Boolean(backend)]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const uiProps = { squirrel, hasBudget, money, saveDailyBudget, logPurchase, budgetBusy: app?.busy ?? false, budgetError: app?.error ?? '', canSave: Boolean(app), activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
+  const uiProps = { squirrel, hasBudget, money, saveDailyBudget, bankFeed, bankSynced, syncBank, budgetBusy: app?.busy ?? false, budgetError: app?.error ?? '', canSave: Boolean(app), activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile };
 
   return (
     <div className="min-h-screen w-full bg-[#EAE3D2] flex justify-center items-start sm:py-6 font-sans text-[#1F2923] antialiased selection:bg-[#F59E0B]/30">

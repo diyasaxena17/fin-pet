@@ -1,18 +1,12 @@
 // @ts-nocheck
 import { useState } from 'react';
 
-const CATEGORIES = [
-  ['food', 'Food'], ['shopping', 'Shopping'], ['transport', 'Transport'],
-  ['entertainment', 'Fun'], ['bills', 'Bills'], ['other', 'Other'],
-];
+const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-/** Live daily budget: entered by the user (no preset), spending comes from the backend. */
-export function DailyBudgetCard({ petName, dailySpent, dailyLimit, hasBudget, isUnderBudget, money, saveDailyBudget, logPurchase, budgetBusy, budgetError, canSave }) {
+/** Live daily budget: entered by the user (no preset). Spending comes from the bank feed, never typed in. */
+export function DailyBudgetCard({ petName, dailySpent, dailyLimit, hasBudget, isUnderBudget, money, saveDailyBudget, bankFeed, bankSynced, syncBank, budgetBusy, budgetError, canSave }) {
   const [editing, setEditing] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState('');
-  const [itemName, setItemName] = useState('');
-  const [itemAmount, setItemAmount] = useState('');
-  const [itemCategory, setItemCategory] = useState('food');
   const showBudgetForm = !hasBudget || editing;
   const percent = hasBudget && dailyLimit > 0 ? Math.min(100, (dailySpent / dailyLimit) * 100) : 0;
 
@@ -22,13 +16,6 @@ export function DailyBudgetCard({ petName, dailySpent, dailyLimit, hasBudget, is
     if (!(amount > 0)) return;
     if (await saveDailyBudget(amount)) { setEditing(false); setBudgetDraft(''); }
   };
-  const submitPurchase = async (event) => {
-    event.preventDefault();
-    const amount = Math.round(Number(itemAmount) * 100) / 100;
-    if (!itemName.trim() || !(amount > 0)) return;
-    if (await logPurchase(itemName.trim(), amount, itemCategory)) { setItemName(''); setItemAmount(''); }
-  };
-
   return (
     <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs space-y-3">
       <div className="flex items-center justify-between">
@@ -77,25 +64,26 @@ export function DailyBudgetCard({ petName, dailySpent, dailyLimit, hasBudget, is
         </div>
       )}
 
-      {hasBudget && (
-        <form onSubmit={submitPurchase} className="rounded-xl border border-[#E6DEC8] p-3 space-y-2">
-          <div className="text-xs font-extrabold text-[#1B4332]">Log a purchase</div>
-          <div className="grid grid-cols-[1fr_5.5rem] gap-2">
-            <input aria-label="Purchase name" required maxLength={200} placeholder="Bubble tea" value={itemName} onChange={(e) => setItemName(e.target.value)}
-              className="min-w-0 px-3 py-2 text-sm rounded-xl border border-[#D6CFC2] bg-white" />
-            <input aria-label="Purchase amount" type="number" min="0.01" step="0.01" inputMode="decimal" required placeholder="$" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)}
-              className="min-w-0 px-3 py-2 text-sm rounded-xl border border-[#D6CFC2] bg-white" />
+      <div className="rounded-xl border border-[#E6DEC8] p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs font-extrabold text-[#1B4332]">Today from your bank</div>
+            <div className="text-[11px] text-[#78716C]">Sample transactions · Plaid will send these once it’s approved</div>
           </div>
-          <div className="flex gap-2">
-            <select aria-label="Purchase category" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)}
-              className="flex-1 min-w-0 px-3 py-2 text-sm rounded-xl border border-[#D6CFC2] bg-white">
-              {CATEGORIES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-            <button type="submit" disabled={budgetBusy || !canSave}
-              className="px-4 py-2 rounded-xl bg-[#B45309] text-white text-xs font-extrabold disabled:opacity-50">Add</button>
-          </div>
-        </form>
-      )}
+          <button type="button" onClick={() => void syncBank()} disabled={budgetBusy || !canSave}
+            className="shrink-0 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-[#FAF6EE] border border-[#D6CFC2] text-[#5C4033] hover:bg-[#F3ECE0] transition disabled:opacity-50">
+            {bankSynced ? 'Synced ✓' : 'Sync'}
+          </button>
+        </div>
+        <ul className="divide-y divide-[#F0E8DA]">
+          {bankFeed.map((t) => (
+            <li key={t.id} className="flex items-center justify-between py-1.5 text-xs">
+              <span><strong className="text-[#292524]">{t.name}</strong> <span className="text-[#78716C]">· {time(t.occurredAt)}</span></span>
+              <span className="font-bold tabular-nums text-[#292524]">{money(t.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       {budgetError && <p className="text-xs font-semibold text-[#991B1B]">{budgetError}</p>}
     </div>
   );
