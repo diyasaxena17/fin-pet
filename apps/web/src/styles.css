@@ -229,3 +229,6 @@ body > .wo-sheet-layer { position: fixed; inset: 0; z-index: 60; }
 .wo-why h3 { margin: 6px 0 4px; font-size: 1.05rem; font-weight: 800; color: var(--wo-ink, #1f2a24); }
 .wo-why p { margin: 6px 0; line-height: 1.45; }
 .wo-why .wo-yours { background: #fbf8f1; border: 1px solid var(--wo-border, #e3ddd0); border-radius: 12px; padding: 10px 12px; }
+.wo-footnote { margin: 14px 0 4px; color: var(--wo-muted); font-size: .72rem; text-align: center; }
+.wo-footnote a { color: var(--wo-forest); font-weight: 800; }
+.wo-hud-title .wo-nuts { display: inline-flex; align-items: center; gap: 3px; font-weight: 800; }

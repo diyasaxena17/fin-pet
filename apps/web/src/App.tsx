@@ -1,13 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { SignalsPage } from './signals/SignalsPage';
 import { SignalsProvider } from './signals/store';
 import { Hud } from './components/Hud';
-
-const tabs = [
-  { to: '/', label: 'Passive', icon: '📡', end: true }, { to: '/intent', label: 'Intent', icon: '🛑' },
-  { to: '/check-ins', label: 'Check-ins', icon: '🧠' }, { to: '/lab', label: 'Test lab', icon: '🧪' },
-] as const;
 
 export function App() {
   const { pathname } = useLocation();
@@ -21,17 +16,12 @@ export function App() {
           <div className="wo-scroll" ref={scroller}>
             <main className="wo-main">
               <Routes>
-                <Route path="/" element={<SignalsPage section="passive" />} />
-                <Route path="/intent" element={<SignalsPage section="intent" />} />
-                <Route path="/check-ins" element={<SignalsPage section="checkins" />} />
+                <Route path="/" element={<SignalsPage section="home" />} />
                 <Route path="/lab" element={<SignalsPage section="lab" />} />
-                <Route path="*" element={<p>Page not found.</p>} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
           </div>
-          <nav aria-label="Main navigation" className="wo-nav">
-            {tabs.map((t) => <NavLink key={t.to} to={t.to} end={'end' in t}><span aria-hidden="true">{t.icon}</span><small>{t.label}</small></NavLink>)}
-          </nav>
           <div id="wo-overlay" />
         </div>
       </div>

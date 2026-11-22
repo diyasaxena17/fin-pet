@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { RewardBadge } from '../components/Sheet';
-import { REWARDS, useSignals } from './store';
+import { useSignals } from './store';
 import { VIBES, type BankTxn, type Pulse, type Vibe } from './types';
 import { cents } from './analytics';
 import { fmtWhen } from './format';
@@ -17,23 +17,6 @@ export function Bar({ label, value, max, tone = 'green', right }: { label: strin
 export function Empty({ children }: { children: ReactNode }) { return <p className="wo-empty">{children}</p>; }
 
 /** Reflection prompt in the style of the practice challenge. Not graded: any answer is valid. */
-export function Challenge({ id, question, options }: { id: string; question: string; options: { id: string; label: string; tip: string }[] }) {
-  const { state, dispatch } = useSignals();
-  const [picked, setPicked] = useState<string | null>(null);
-  const done = Boolean(state.collected[id]);
-  const chosen = options.find((o) => o.id === picked);
-  return <div className="wo-challenge">
-    <p className="wo-eyebrow">INTERACTIVE REFLECTION</p><p className="wo-question">{question}</p>
-    <div role="radiogroup" aria-label={question} className="wo-options">
-      {options.map((o) => <button key={o.id} type="button" role="radio" aria-checked={picked === o.id} disabled={done}
-        className="wo-option" data-selected={picked === o.id} onClick={() => setPicked(o.id)}>{o.label}</button>)}
-    </div>
-    {chosen && done ? <p className="wo-tip" role="status">{chosen.tip}</p> : null}
-    <button type="button" className="wo-cta" disabled={done || !picked} onClick={() => dispatch({ type: 'collect', id })}>
-      {done ? `Collected +${REWARDS.insight.nuts} Golden Nuts ✓` : `Submit & Collect +${REWARDS.insight.nuts} Golden Nuts`}</button>
-  </div>;
-}
-
 export function VibeTagger({ txn }: { txn: BankTxn }) {
   const { state, dispatch } = useSignals();
   const current = state.vibes[txn.id];
