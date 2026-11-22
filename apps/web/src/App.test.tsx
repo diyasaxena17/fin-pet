@@ -91,7 +91,7 @@ describe('Squirrel & Tree journeys', () => {
     expect((await api.getTransactions(new Date().toISOString().slice(0, 7))).transactions[0]?.reflection?.verdict).toBe('worth_it');
   });
 
-  it('rewards a lesson once and unlocks the level-based features', async () => {
+  it('rewards a lesson once with acorns and tree progress', async () => {
     const user = userEvent.setup(); await api.onboard(onboarding); const lessons = await api.getLessons(); const lesson = lessons.lessons[0]!; const correctId = 'save'; mount('/learn');
     await screen.findByRole('heading', { name: lesson.title }); await user.click(screen.getByLabelText('Record money actually set aside'));
     await user.click(screen.getAllByRole('button', { name: 'Submit answer' })[0]!); await screen.findByText(/Collected \+5 acorns/);

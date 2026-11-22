@@ -22,6 +22,7 @@ describe('behavioural shell', () => {
     expect(screen.getByText('Your Winter Oak')).toBeTruthy();
     expect(screen.getByLabelText('0 acorns collected')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Forest growth' }).getAttribute('aria-valuenow')).toBe('0');
+    expect(screen.queryByLabelText(/Level/)).toBeNull();
     expect(screen.getByText(/0\/7 Behaviour Skills Sprouted/)).toBeTruthy();
     expect(screen.getByLabelText('Mock bank feed').textContent).toContain('behaviour-sandbox-14-v2');
     const links = within(screen.getByRole('navigation', { name: 'Main navigation' })).getAllByRole('link').map((l) => l.textContent);
