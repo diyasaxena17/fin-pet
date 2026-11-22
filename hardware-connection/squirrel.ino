@@ -194,6 +194,7 @@ void setMood(Mood m) {
   mood = m;
   if (m == SLEEPING) { hardwareOff(); return; }   // NEW: sleep = fully off
   hardwareOn();
+  lcd.begin(16, 2);                     // restart the screen on every mood: fixes a half-drawn screen after a power dip
   lcd.clear();
   switch (m) {
     case IDLE:
