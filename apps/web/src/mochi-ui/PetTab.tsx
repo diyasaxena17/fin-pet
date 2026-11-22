@@ -1,7 +1,6 @@
 // @ts-nocheck
 import * as Icons from './Icons';
 import { HardwareSquirrel } from './HardwareSquirrel';
-import { SquirrelControls } from '../hardware/SquirrelControls';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function PetTab(props) {
@@ -69,22 +68,9 @@ export function PetTab(props) {
                   )}
                 </div>
                 <p className="text-xs text-[#6B5E51] mt-0.5">
-                  {squirrel
-                    ? squirrel.status === 'connected'
-                      ? `Squirrel connected by USB • ${squirrel.awake ? 'Awake' : 'Asleep until the next NFC tap'}`
-                      : squirrel.status === 'unsupported'
-                        ? 'Open in Chrome or Edge on a computer to connect the squirrel'
-                        : 'Squirrel not connected yet. Connect it below.'
-                    : 'Hardware ID: #SQ-NFC-04 • Battery 92%'}
+                  Tap the NFC chip to wake me up
                 </p>
               </div>
-
-              {/* Real hardware: USB connection, NFC wake link, wake / sleep */}
-              {squirrel && (
-                <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs">
-                  <SquirrelControls />
-                </div>
-              )}
 
               {/* Voice Personality Selector */}
               <div className="bg-white rounded-2xl p-4 border border-[#E6DEC8] shadow-xs">
@@ -130,7 +116,7 @@ export function PetTab(props) {
 
                 <button
                   onClick={() => {
-                    if (squirrel && !squirrel.awake) squirrel.play('p');
+                    squirrel?.play('p');
                     triggerCelebration(
                       `Under daily budget! Tail servo wagging at 100% excitement!`,
                       'happy'
@@ -144,7 +130,7 @@ export function PetTab(props) {
 
                 <button
                   onClick={() => {
-                    squirrel?.wake('Test NFC tap');
+                    squirrel?.testTap();
                     setHardwareMood('alert');
                     setIsWagging(false);
                     setSpeechBubble(

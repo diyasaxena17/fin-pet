@@ -422,30 +422,3 @@ body > .wo-sheet-layer { position: fixed; inset: 0; z-index: 60; }
 .wo-why h3 { margin: 6px 0 4px; font-size: 1.05rem; font-weight: 800; color: var(--wo-ink, #1f2a24); }
 .wo-why p { margin: 6px 0; line-height: 1.45; }
 .wo-why .wo-yours { background: #fbf8f1; border: 1px solid var(--wo-border, #e3ddd0); border-radius: 12px; padding: 10px 12px; }
-
-/* Physical squirrel dock (hardware/SquirrelDock.tsx) */
-.squirrel-dock { position: fixed; right: 1rem; bottom: 1rem; z-index: 60; display: flex; flex-direction: column; align-items: flex-end; gap: .6rem; max-width: calc(100vw - 2rem); }
-.squirrel-pill { gap: .5rem; border-radius: 999px; padding: .62rem 1rem; color: #26382e !important; background: #fffffff2 !important; border: 1px solid #dfe9db; font-size: .88rem; box-shadow: 0 10px 26px #1c3d241f; backdrop-filter: blur(8px); }
-.squirrel-pill:hover:not(:disabled) { background: #f5faf3 !important; }
-.squirrel-dot { width: .6rem; height: .6rem; border-radius: 999px; background: #b9c4bb; }
-.squirrel-dot--awake { background: #3fa35f; box-shadow: 0 0 0 4px #3fa35f2e; }
-.squirrel-dot--asleep { background: #7c8fd6; }
-.squirrel-dot--busy { background: #e0a43a; animation: leaf-pulse .8s ease-in-out infinite alternate; }
-.squirrel-dot--off { background: #c7cfc8; }
-.squirrel-panel { width: min(23rem, calc(100vw - 2rem)); display: grid; gap: .6rem; border: 1px solid #e0e9dc; border-radius: 1.4rem; padding: 1.1rem; background: #fffffffa; box-shadow: 0 18px 44px #1c3d2426; }
-.squirrel-panel__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
-.squirrel-panel__head strong, .squirrel-title { color: #26382e; }
-.squirrel-controls { display: grid; gap: .85rem; text-align: left; }
-.squirrel-close { padding: .35rem .6rem; font-size: .8rem; }
-.squirrel-row { display: flex; gap: .5rem; align-items: center; }
-.squirrel-row input { margin-top: 0; min-width: 0; font-size: .8rem; padding: .6rem .7rem; }
-.squirrel-row > button { flex: 0 0 auto; padding: .6rem .8rem; font-size: .85rem; }
-.squirrel-wide { width: 100%; }
-.squirrel-moods { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; }
-.squirrel-moods button { padding: .55rem .3rem; font-size: .82rem; }
-.squirrel-message { margin: 0; border-radius: .85rem; padding: .6rem .75rem; color: #2a5a3a; background: #eff6ec; font-size: .85rem; line-height: 1.45; }
-.squirrel-nfc { display: grid; gap: .55rem; border-top: 1px solid #edf2ea; padding-top: .8rem; }
-.squirrel-nfc .supporting-copy { margin: 0; line-height: 1.45; }
-.squirrel-code summary { cursor: pointer; color: #286840; font-size: .82rem; font-weight: 700; }
-.squirrel-code form { margin-top: .5rem; }
-.squirrel-error { margin: .4rem 0 0; color: #a33d2c; font-size: .8rem; }

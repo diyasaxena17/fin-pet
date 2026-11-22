@@ -1,5 +1,5 @@
 import type { AddendumAppState } from '@mochi/contracts';
-import type { SquirrelLetter } from './squirrelSerial';
+import type { SquirrelLetter } from './tapRelay';
 
 /** Same rule as the original Mochi: under budget → happy, up to 25% over → worried, more → sad. */
 export function budgetLetter(spentToday: number, dailyLimit: number | null): 'p' | 'w' | 'd' | null {

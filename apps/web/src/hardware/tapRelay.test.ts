@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isTapCode, listenForTaps, loadTapCode, makeTapCode, tapLink } from './tapRelay';
+import { TAP_CODE, isTapMessage, listenForTaps, sendToSquirrel, tapLink } from './tapRelay';
 
 class FakeSource {
   static last: FakeSource | null = null;
@@ -13,30 +13,31 @@ class FakeSource {
 }
 afterEach(() => { vi.useRealTimers(); });
 
-describe('NFC tap relay', () => {
-  it('makes private, valid tap codes and phone links', () => {
-    const code = makeTapCode(() => 0);
-    expect(code).toBe('mochi-aaaaaaaaaaaa');
-    expect(isTapCode(code)).toBe(true);
-    expect(isTapCode('bad code!')).toBe(false);
-    expect(tapLink('mochi-abc123')).toBe('https://ntfy.sh/mochi-abc123/publish?message=wake');
+describe('squirrel relay', () => {
+  it('uses one fixed tap code, so the NFC chip never needs reprogramming', () => {
+    expect(TAP_CODE).toBe('mochi-tii645ranyxe');
+    expect(tapLink()).toBe('https://ntfy.sh/mochi-tii645ranyxe/publish?message=wake');
   });
 
-  it('remembers the tap code per install', () => {
-    const store = new Map<string, string>();
-    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } };
-    const first = loadTapCode(storage);
-    expect(loadTapCode(storage)).toBe(first);
+  it('tells phone taps apart from the app’s own mood messages', () => {
+    for (const text of ['wake', 'tap', 'TAP ', '', undefined]) expect(isTapMessage(text)).toBe(true);
+    for (const text of ['mood:p', 'mood!:w', 'sleep']) expect(isTapMessage(text)).toBe(false);
   });
 
-  it('wakes once per tap, ignores keepalives and double taps, and stops cleanly', () => {
+  it('posts mood messages to the bridge', () => {
+    const send = vi.fn(async () => undefined);
+    sendToSquirrel('mood:p', 'mochi-test123', send);
+    expect(send).toHaveBeenCalledWith('https://ntfy.sh/mochi-test123', { method: 'POST', body: 'mood:p' });
+  });
+
+  it('wakes once per tap, ignores keepalives, mood messages and double taps', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    const onTap = vi.fn(); const onStatus = vi.fn();
-    const stop = listenForTaps('mochi-abc123', onTap, onStatus, FakeSource as never);
+    const onTap = vi.fn();
+    const stop = listenForTaps(onTap, 'mochi-abc123', FakeSource as never);
     const source = FakeSource.last!;
     expect(source.url).toBe('https://ntfy.sh/mochi-abc123/sse');
-    source.onopen?.(); expect(onStatus).toHaveBeenCalledWith('listening');
     source.emit({ event: 'keepalive' });
+    source.emit({ event: 'message', message: 'mood:p' });
     source.emit({ event: 'message', message: 'wake' });
     source.emit({ event: 'message', message: 'wake' });
     expect(onTap).toHaveBeenCalledTimes(1);
@@ -46,10 +47,7 @@ describe('NFC tap relay', () => {
     stop(); expect(source.closed).toBe(true);
   });
 
-  it('does nothing without EventSource or with a bad code', () => {
-    expect(() => listenForTaps('mochi-abc123', vi.fn(), undefined, undefined)()).not.toThrow();
-    FakeSource.last = null;
-    listenForTaps('no', vi.fn(), undefined, FakeSource as never);
-    expect(FakeSource.last).toBeNull();
+  it('does nothing without EventSource', () => {
+    expect(() => listenForTaps(vi.fn(), 'mochi-abc123', undefined)()).not.toThrow();
   });
 });

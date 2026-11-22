@@ -1,55 +1,45 @@
 /**
- * NFC wake-up relay. The phone's NFC automation opens the tap link, which posts a message to a
- * private ntfy.sh topic (free, no account). The app listens on that topic and wakes the squirrel.
+ * Message relay between the phone, the app and the squirrel bridge (hardware-connection/windows-bridge.ps1),
+ * using one fixed private ntfy.sh topic (free, no account).
+ *   phone NFC tap  → "wake" (or "tap")  → bridge wakes the squirrel; the app opens the daily check-in
+ *   app            → "mood:<letter>"    → bridge plays that mood if the squirrel is awake
+ *   app            → "mood!:<letter>"   → bridge wakes it and plays that mood (test buttons)
+ * Letters: i idle · p happy dance · w worried · d sad · t talking · z sleep
  */
 export const TAP_SERVER = 'https://ntfy.sh';
-const STORAGE_KEY = 'mochi.squirrel.tapCode';
-const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
+export const TAP_CODE: string = import.meta.env.VITE_MOCHI_TAP_CODE || 'mochi-tii645ranyxe';
+export const tapLink = (code: string = TAP_CODE) => `${TAP_SERVER}/${code}/publish?message=wake`;
 
-export function isTapCode(code: string): boolean {
-  return /^[A-Za-z0-9_-]{6,64}$/.test(code);
+export type SquirrelLetter = 'i' | 'p' | 'w' | 'd' | 't' | 'z';
+
+/** True for a phone tap (or a test tap), false for the app's own mood messages. */
+export function isTapMessage(message: string | undefined): boolean {
+  const text = (message ?? '').trim().toLowerCase();
+  return text === '' || text === 'wake' || text === 'tap' || text === 'triggered';
 }
 
-export function makeTapCode(random: () => number = Math.random): string {
-  let code = 'mochi-';
-  for (let index = 0; index < 12; index += 1) code += ALPHABET[Math.floor(random() * ALPHABET.length)];
-  return code;
-}
+type Send = (url: string, init: RequestInit) => Promise<unknown>;
 
-export function tapLink(code: string): string {
-  return `${TAP_SERVER}/${code}/publish?message=wake`;
-}
-
-export function loadTapCode(storage: Pick<Storage, 'getItem' | 'setItem'> | null = safeStorage()): string {
-  const saved = storage?.getItem(STORAGE_KEY) ?? '';
-  if (isTapCode(saved)) return saved;
-  const code = makeTapCode();
-  try { storage?.setItem(STORAGE_KEY, code); } catch { /* private mode */ }
-  return code;
-}
-
-export function saveTapCode(code: string, storage: Pick<Storage, 'setItem'> | null = safeStorage()): void {
-  try { storage?.setItem(STORAGE_KEY, code); } catch { /* private mode */ }
+/** Fire-and-forget message to the bridge. */
+export function sendToSquirrel(message: string, code: string = TAP_CODE, send: Send = (url, init) => fetch(url, init)): void {
+  void send(`${TAP_SERVER}/${code}`, { method: 'POST', body: message }).catch(() => undefined);
 }
 
 type EventSourceFactory = new (url: string) => Pick<EventSource, 'close' | 'onmessage' | 'onopen' | 'onerror'>;
 
 /** Calls onTap for each phone tap (double taps within 2.5 s count once). Returns a stop function. */
 export function listenForTaps(
-  code: string,
   onTap: () => void,
-  onStatus: (status: 'listening' | 'reconnecting') => void = () => undefined,
+  code: string = TAP_CODE,
   Source: EventSourceFactory | undefined = typeof EventSource === 'undefined' ? undefined : EventSource,
 ): () => void {
-  if (!Source || !isTapCode(code)) return () => undefined;
+  if (!Source) return () => undefined;
   const source = new Source(`${TAP_SERVER}/${code}/sse`);
   let lastTap = 0;
-  source.onopen = () => onStatus('listening');
-  source.onerror = () => onStatus('reconnecting');
   source.onmessage = (event: MessageEvent<string>) => {
     try {
-      const message = JSON.parse(event.data) as { event?: string };
-      if (message.event && message.event !== 'message') return;
+      const data = JSON.parse(event.data) as { event?: string; message?: string };
+      if ((data.event && data.event !== 'message') || !isTapMessage(data.message)) return;
     } catch { return; }
     const now = Date.now();
     if (now - lastTap < 2500) return;
@@ -57,8 +47,4 @@ export function listenForTaps(
     onTap();
   };
   return () => source.close();
-}
-
-function safeStorage(): Storage | null {
-  try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; }
 }

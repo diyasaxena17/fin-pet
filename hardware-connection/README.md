@@ -30,32 +30,33 @@ hardware owner. Nothing here changes the app, API, contracts or lockfile.
 The sketch replies `READY` at start and `OK <letter>` per command. It starts
 asleep and goes back to sleep when the USB connection closes.
 
-## Use it from the app (recommended)
+## Run it with the app (recommended)
 
-The web app drives the squirrel itself: no bridge, poller or Pi needed
-(`apps/web/src/hardware/`).
+The squirrel is run by a small background program on the laptop it's plugged into,
+`windows-bridge.ps1` (Windows, nothing to install). The app has no hardware screen.
 
-1. Open the app in **Chrome or Edge on a computer** with the squirrel plugged in by USB.
-   Close the Arduino IDE Serial Monitor first: only one program can use the port.
-2. Click **Squirrel · Not connected** (bottom right), then **Connect squirrel (USB)**
-   and pick the Arduino. Next time the app reconnects by itself.
-3. Copy the **NFC tap link** into the phone's NFC automation (iPhone Shortcuts →
-   Automation → NFC → "Get Contents of URL"). The link goes through ntfy.sh, so it
-   works on any network. Each install gets its own private link.
-
-What the squirrel does:
+1. Plug the squirrel in by USB and close the Arduino IDE Serial Monitor (only one
+   program can use the port).
+2. Double-click **`start-squirrel-bridge.bat`**. It finds the Arduino by itself and
+   prints what it does. Leave the window open; closing it puts the squirrel to sleep.
+3. The phone's NFC automation (iPhone Shortcuts → Automation → NFC → "Get Contents of
+   URL") opens the fixed tap link
+   `https://ntfy.sh/mochi-tii645ranyxe/publish?message=wake`. The app and bridge use
+   the same code (`VITE_MOCHI_TAP_CODE` / `MOCHI_TAP_CODE` change it), so the chip never
+   needs reprogramming. The NFC chip is only for waking the squirrel.
 
 | When | Squirrel |
 | --- | --- |
-| Connected, before any tap | Asleep (`z`) |
-| NFC tap (or **Wake up**) | Happy dance (`p`), then today's budget: worried (`w`) if up to 25% over, sad (`d`) if more |
-| Daily check-in completed | Budget mood: happy if under, worried/sad if over |
-| Level up, savings added, goal reached | Happy dance |
-| New spending pushes today over budget | Worried or sad |
-| App is speaking (voice preview) | Tail sway (`t`) |
-| **Goodbye (sleep)**, Disconnect, or closing the app | Asleep, screen off, servo released |
+| Bridge started | Asleep (`z`) |
+| NFC tap | Happy dance (`p`), then today's budget from the app: worried (`w`) if up to 25% over, sad (`d`) if more |
+| Daily check-in completed (while awake) | Budget mood |
+| Level up, savings added, goal reached (while awake) | Happy dance |
+| Spending synced from the bank goes over budget (while awake) | Worried or sad |
+| Pet tab test buttons | Wake and play that mood |
+| 10 quiet minutes, or closing the bridge | Asleep, screen off, servo released |
 
-While asleep, app events don't wake it: only the NFC tap (or **Wake up**) does.
+Messages travel over the same private ntfy.sh topic: the phone sends `wake`, the app
+sends `mood:<letter>` (only acts while awake) or `mood!:<letter>` (wakes first).
 
 ## Use with the existing device poller
 
