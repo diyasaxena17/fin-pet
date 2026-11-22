@@ -23,10 +23,11 @@ export function SkillTreeTab(props) {
 
               {/* ILLUSTRATED INTERACTIVE SVG SKILL TREE */}
               <div className="relative w-full px-2 pt-1 pb-2 flex-1 flex flex-col items-center justify-center">
-                <div className="relative w-full max-w-[420px] aspect-[370/415] rounded-3xl bg-gradient-to-b from-[#EFF6EE] via-[#F7F3E8] to-[#EFE5D1] border border-[#E2D7C1] shadow-inner overflow-hidden">
+                <div className="relative w-full max-w-[420px] aspect-[370/415] rounded-3xl bg-gradient-to-b from-[#F2E7CF] via-[#F5EFDF] to-[#D3B28A] border border-[#E2D7C1] shadow-inner overflow-hidden">
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#D8F3DC] via-[#F4F8E8] to-[#A8C889] transition-opacity duration-700" style={{ opacity: treeScale }} />
                   <svg
                     viewBox="0 0 370 415"
-                    className="w-full h-full select-none"
+                    className="relative z-10 w-full h-full select-none"
                     role="img"
                     aria-label="Interactive Financial Planning Skill Tree"
                   >

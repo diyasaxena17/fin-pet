@@ -327,7 +327,7 @@ export function App() {
               </div>
               <div>
                 <h1 className="text-sm font-extrabold text-[#1B4332] leading-tight">
-                  {petName ? `${petName}’s` : 'Your'} Winter Oak
+                  Learning tree
                 </h1>
                 <p className="text-[11px] text-[#6B5E51]">
                   {plantedAcorns} acorns planted Â· {completedLessons}/{totalLessons} skills grown
@@ -361,7 +361,7 @@ export function App() {
           {/* ========================================================= */}
           {/* TAB 1: INTERACTIVE FINANCIAL SKILL TREE (LANDING VIEW)    */}
           {/* ========================================================= */}
-          {showWinterOak ? <WinterOak embedded /> : <>
+          {showWinterOak ? <WinterOak embedded petName={petName} /> : <>
             <SkillTreeTab {...uiProps} />
             {activeTab === 'tree' && <LandingJourneys />}
             <ReportsTab {...uiProps} />

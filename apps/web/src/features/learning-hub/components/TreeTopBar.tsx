@@ -20,7 +20,7 @@ export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sprout
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 rounded-full bg-[#234535] px-3 py-1.5 text-[0.7rem] font-bold text-white">
           <span aria-hidden="true" className={`h-2 w-2 rounded-full ${nfcConnected ? 'bg-[#6FE08F]' : 'bg-[#9AA79E]'}`} />
-          {nfcConnected ? `NFC Connected • ${petName}` : petName}
+          {nfcConnected ? petName ? `NFC Connected • ${petName}` : 'NFC Connected' : petName || 'Your companion'}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -45,7 +45,7 @@ export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sprout
 
       <div className="mt-4 flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[1.05rem] font-extrabold leading-tight text-[#1F3B2D]">{petName}&rsquo;s Winter Oak</h1>
+          <h1 className="truncate text-[1.05rem] font-extrabold leading-tight text-[#1F3B2D]">Learning tree</h1>
           <p className="text-xs text-[#5F6E63]">
             <span data-testid="sprouted">{sproutedCount}/{branchCount}</span> Financial Skills Sprouted
           </p>

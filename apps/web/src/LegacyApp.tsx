@@ -15,7 +15,7 @@ import { useAppState } from './lib/appState';
 
 const tabs = [
   { to: '/?legacy=1', label: 'Forest', end: true }, { to: '/budget', label: 'Budget' },
-  { to: '/insights', label: 'Insights' }, { to: '/learn', label: 'Learn' }, { to: '/oak', label: 'Winter Oak' }, { to: '/future', label: 'Future' },
+  { to: '/insights', label: 'Insights' }, { to: '/learn', label: 'Learn' }, { to: '/oak', label: 'Learning tree' }, { to: '/future', label: 'Future' },
 ];
 export function App() {
   const { state, error, reload } = useAppState();

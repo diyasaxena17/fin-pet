@@ -32,7 +32,7 @@ describe('LearningHub tree', () => {
     expect(screen.getByTestId('node-tfsa').getAttribute('data-state')).toBe('locked');
     expect(screen.getByTestId('grown').textContent).toBe('0% Grown');
     expect(screen.getByTestId('sprouted').textContent).toBe('0/7');
-    expect(screen.getByText('NFC Connected • Pip')).toBeTruthy();
+    expect(screen.getByText('NFC Connected')).toBeTruthy();
   });
 
   it('shows the unlock cost when a locked branch is tapped, without opening a lesson', () => {

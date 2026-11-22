@@ -19,7 +19,7 @@ describe('behavioural shell', () => {
   it('shows only behavioural sections, with a HUD derived from signals and the persona ledger', () => {
     mount();
     expect(screen.getByRole('heading', { name: 'Spending patterns' })).toBeTruthy();
-    expect(screen.getByText('Your Winter Oak')).toBeTruthy();
+    expect(screen.getByText('Learning tree')).toBeTruthy();
     expect(screen.getByLabelText('0 acorns collected')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Forest growth' }).getAttribute('aria-valuenow')).toBe('0');
     expect(screen.queryByLabelText(/Level/)).toBeNull();

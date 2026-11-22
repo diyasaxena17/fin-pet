@@ -2,7 +2,7 @@
  * Self-contained squirrel mascot (inline colours, no external CSS or shared types).
  * Bare SVG: size and position it from the outside with className.
  */
-export function SquirrelAvatar({ className = '', label = 'Pip the squirrel' }: { className?: string; label?: string }) {
+export function SquirrelAvatar({ className = '', label = 'Your squirrel' }: { className?: string; label?: string }) {
   return (
     <svg viewBox="0 0 64 60" role="img" aria-label={label} className={className} overflow="visible">
       {/* bushy tail */}

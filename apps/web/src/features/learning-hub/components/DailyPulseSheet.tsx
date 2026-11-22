@@ -49,7 +49,7 @@ export function DailyPulseSheet({ streak, dailyNuts, next, onStartNext, onClose 
         </div>
         <p className="mt-2 text-xs text-[#5F6E63]">
           {dailyNuts >= DAILY_GOAL_NUTS
-            ? 'Goal reached. Pip is happy, and your streak is safe for today.'
+            ? 'Goal reached. Your streak is safe for today.'
             : `Collect ${DAILY_GOAL_NUTS - shown} more acorns today to hit your goal and keep your streak growing.`}
         </p>
         <div className="mt-5 rounded-2xl bg-[#EFE9DC] p-4">

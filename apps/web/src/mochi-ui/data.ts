@@ -54,7 +54,7 @@ export const INITIAL_BRANCHES = [
     accent: '#F59E0B',
     unlocked: true,
     coords: { x: 118, y: 205 },
-    labelPos: { x: 24, y: 170, align: 'left' },
+    labelPos: { x: 48, y: 170, align: 'left' },
     lessons: [
       {
         id: 't1',

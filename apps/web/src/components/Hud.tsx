@@ -6,8 +6,7 @@ const dollars = (value: number) => `$${Math.round(value / 100)}`;
 function savedPetName() {
   try {
     const setup = JSON.parse(window.localStorage.getItem('mochi.profile.setup.v2') ?? '{}');
-    const name = typeof setup.petName === 'string' ? setup.petName.trim() : '';
-    return name;
+    return typeof setup.petName === 'string' ? setup.petName.trim() : '';
   } catch { return ''; }
 }
 
@@ -23,7 +22,7 @@ export function Hud() {
       <span className="wo-hud-right"><span className="wo-nuts" aria-label={`${state.nuts} acorns collected`}><NutIcon size={18} />{state.nuts} acorns</span></span>
     </div>
     <div className="wo-hud-progress">
-      <div className="wo-hud-title"><p>{petName ? `${petName}’s` : 'Your'} Winter Oak</p><small>{hud.sproutedCount}/{SPROUT_LABELS.length} Behaviour Skills Sprouted</small></div>
+      <div className="wo-hud-title"><p>Learning tree</p><small>{hud.sproutedCount}/{SPROUT_LABELS.length} Behaviour Skills Sprouted</small></div>
       <div className={`wo-cap ${within === false ? 'wo-cap-over' : ''}`} aria-label={cap === null ? 'No daily cap set' : `Daily cap: ${dollars(hud.todaySpentCents)} of ${dollars(cap)}`}>
         <small>DAILY CAP</small><strong>{cap === null ? 'Not set' : <>{dollars(hud.todaySpentCents)} / {dollars(cap)} {within ? '✓' : '!'}</>}</strong></div>
     </div>

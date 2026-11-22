@@ -28,7 +28,7 @@ type Open =
  * Fills its parent (h-full) and scrolls internally; sheets slide over this root. Give the parent a
  * definite height, e.g. a phone-sized container.
  */
-export function LearningHub({ petName = 'Pip', nfcConnected = true }: Props) {
+export function LearningHub({ petName = '', nfcConnected = true }: Props) {
   const { progress, completeQuest, today } = useLearningProgress();
   const [open, setOpen] = useState<Open>(null);
   const [tooltipBranchId, setTooltipBranchId] = useState<string | null>(null);

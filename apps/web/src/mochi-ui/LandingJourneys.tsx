@@ -103,7 +103,7 @@ export function LandingJourneys() {
       </Link>
       <Link className="landing-path-link landing-path-link--learning" to="/oak">
         <span className="landing-path-icon" aria-hidden="true">🌳</span>
-        <strong>Winter Oak</strong>
+        <strong>Learning tree</strong>
         <small>Learn with short stories, lessons and forest activities.</small>
         <span className="landing-path-action">Explore learning <span aria-hidden="true">→</span></span>
       </Link>
