@@ -55,13 +55,15 @@ export function circadianProfile(txns: readonly BankTxn[], opts: { startHour?: n
 
 // ---------- 1c. Payday-to-splurge latency ----------
 export interface PaydayWindow {
-  payroll: BankTxn; spend: BankTxn[]; spendCents: number; firstLatencyHours: number | null;
+  payroll: BankTxn; spend: BankTxn[]; spendCents: number;
+  /** Hours from the deposit to the first splurge-sized (>= splurgeMinCents) discretionary purchase; small habit buys don't count. */
+  firstLatencyHours: number | null;
   /** window spend / (baseline daily discretionary spend x windowHours/24); null when no baseline exists. */
   spikeRatio: number | null; flagged: boolean;
 }
 export interface PaydayProfile { windows: PaydayWindow[]; baselineDailyCents: number; creepChangePct: number | null }
-export function paydayProfile(txns: readonly BankTxn[], opts: { windowHours?: number; spikeAt?: number } = {}): PaydayProfile {
-  const windowMs = (opts.windowHours ?? 48) * HOUR; const spikeAt = opts.spikeAt ?? 1.5;
+export function paydayProfile(txns: readonly BankTxn[], opts: { windowHours?: number; spikeAt?: number; splurgeMinCents?: number } = {}): PaydayProfile {
+  const windowMs = (opts.windowHours ?? 48) * HOUR; const spikeAt = opts.spikeAt ?? 1.5; const splurgeMin = opts.splurgeMinCents ?? 3000;
   const d = discretionary(txns); const payrolls = txns.filter((t) => t.direction === 'payroll').sort(byTime);
   const inWindow = (t: BankTxn) => payrolls.some((p) => ms(t.at) >= ms(p.at) && ms(t.at) <= ms(p.at) + windowMs);
   const dates = txns.map((t) => ms(t.at)); const spanDays = dates.length ? Math.max(1, Math.ceil((Math.max(...dates) - Math.min(...dates)) / (24 * HOUR))) : 1;
@@ -71,7 +73,7 @@ export function paydayProfile(txns: readonly BankTxn[], opts: { windowHours?: nu
     const spend = d.filter((t) => ms(t.at) >= ms(payroll.at) && ms(t.at) <= ms(payroll.at) + windowMs);
     const spendCents = sum(spend.map((t) => t.amountCents)); const expected = baselineDailyCents * (windowMs / (24 * HOUR));
     const spikeRatio = expected > 0 ? spendCents / expected : null;
-    return { payroll, spend, spendCents, firstLatencyHours: spend[0] ? (ms(spend[0].at) - ms(payroll.at)) / HOUR : null,
+    return { payroll, spend, spendCents, firstLatencyHours: (() => { const first = spend.find((t) => t.amountCents >= splurgeMin); return first ? (ms(first.at) - ms(payroll.at)) / HOUR : null; })(),
       spikeRatio, flagged: spikeRatio !== null && spikeRatio >= spikeAt };
   });
   const first = windows.at(-2)?.spendCents; const last = windows.at(-1)?.spendCents;
@@ -168,3 +170,10 @@ export function seedPulses(reflections: readonly LedgerReflection[]): Record<str
 }
 
 export const cents = (value: number) => `$${(value / 100).toLocaleString('en-CA', { minimumFractionDigits: value % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+
+/** Cash on hand implied by a set of movements: payroll in, purchases and transfers out (investment gains are not cash). */
+export const cashOf = (txns: readonly BankTxn[], openingCents: number) =>
+  txns.reduce((cash, t) => (t.direction === 'payroll' ? cash + t.amountCents : t.direction === 'debit' ? cash - t.amountCents : cash), openingCents);
+/** 0 = Sunday, from the wall-clock date in an ISO string. */
+export const dayOfWeek = (iso: string) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))).getUTCDay();
+export const isWeekendNight = (iso: string) => { const d = dayOfWeek(iso); const h = localHour(iso); return (d === 5 && h >= 17) || d === 6 || (d === 0 && h < 5); };

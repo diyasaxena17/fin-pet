@@ -1,5 +1,5 @@
 import type { TransactionCategory } from '@mochi/contracts';
-import type { LedgerCategory, BankTxn, SkippedDecision, LedgerReflection, Direction } from './types';
+import type { LedgerCategory, BankTxn, SkippedDecision, LedgerReflection, Direction, Vibe } from './types';
 import type { SandboxLedger } from './ledger';
 
 const spendCategories: readonly string[] = ['food', 'shopping', 'transport', 'entertainment', 'bills', 'other'];
@@ -11,13 +11,15 @@ export interface AdaptedLedger {
   transactions: BankTxn[];
   skippedDecisions: SkippedDecision[];
   reflections: LedgerReflection[];
+  /** Vibe check-ins already answered in the feed, keyed by transaction id. */
+  vibes: Record<string, Vibe>;
   /** Ledger event types with no bank movement (lessons, check-ins, budgets) are dropped here. */
   ignored: number;
 }
 
-/** Maps the sandbox ledger onto `BankTxn`. Expense ids match the API's `txn-<uuid>` ids. */
+/** Maps the ledger onto `BankTxn`. Expense ids use the API's `txn-<uuid>` format. */
 export function adaptLedger(ledger: SandboxLedger): AdaptedLedger {
-  const transactions: BankTxn[] = []; const skippedDecisions: SkippedDecision[] = []; const reflections: LedgerReflection[] = [];
+  const transactions: BankTxn[] = []; const skippedDecisions: SkippedDecision[] = []; const reflections: LedgerReflection[] = []; const vibes: Record<string, Vibe> = {};
   let ignored = 0;
   for (const e of ledger.entries) {
     const base = { at: e.occurredAt, merchant: e.merchant, name: e.name ?? e.merchant, amountCents: e.amountCents, source: 'demo' as const };
@@ -36,7 +38,9 @@ export function adaptLedger(ledger: SandboxLedger): AdaptedLedger {
       skippedDecisions.push({ id: e.id, at: e.occurredAt, merchant: e.merchant, valueCents: e.amountCents });
     } else if (e.type === 'reflection' && e.transactionId && (e.verdict === 'worth_it' || e.verdict === 'unsure' || e.verdict === 'not_worth_it')) {
       reflections.push({ transactionId: e.transactionId, verdict: e.verdict, at: e.occurredAt });
+    } else if (e.type === 'vibe_tag' && e.transactionId && (e.vibe === 'planned' || e.vibe === 'hungry_tired' || e.vibe === 'stressed' || e.vibe === 'treat_social')) {
+      vibes[e.transactionId] = e.vibe;
     } else ignored += 1;
   }
-  return { transactions, skippedDecisions, reflections, ignored };
+  return { transactions, skippedDecisions, reflections, vibes, ignored };
 }

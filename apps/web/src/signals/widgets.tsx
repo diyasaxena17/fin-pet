@@ -4,6 +4,7 @@ import { REWARDS, useSignals } from './store';
 import { VIBES, type BankTxn, type Pulse, type Vibe } from './types';
 import { cents } from './analytics';
 import { fmtWhen } from './format';
+import { WHY_CAUTION, buildWhy, type WhyKey } from './insights';
 
 export function Callout({ title, children, reward }: { title: string; children: ReactNode; reward?: number }) {
   return <div className="wo-callout"><div className="wo-callout-top"><h3>{title}</h3>{reward ? <RewardBadge nuts={reward} /> : null}</div><div className="wo-callout-body">{children}</div></div>;
@@ -53,4 +54,13 @@ export function PulseButtons({ txn }: { txn: BankTxn }) {
     <button type="button" aria-pressed={current === 'worth'} onClick={() => dispatch({ type: 'answerPulse', id: txn.id, pulse: 'worth' })}>👍 Worth It</button>
     <button type="button" aria-pressed={current === 'regret'} onClick={() => dispatch({ type: 'answerPulse', id: txn.id, pulse: 'regret' })}>👎 Regret</button>
   </div>;
+}
+
+/** Named psychology concept plus one sentence computed from the current feed. Non-diagnostic by design. */
+export function WhyPanel({ k }: { k: WhyKey }) {
+  const { state, derived } = useSignals();
+  const why = buildWhy(derived, state)[k];
+  return <section className="wo-panel wo-why" aria-label={`Why this happens: ${why.concept}`}>
+    <p className="wo-eyebrow">WHY THIS HAPPENS</p><h3>{why.concept}</h3><p>{why.summary}</p>
+    <p className="wo-yours"><strong>In your feed:</strong> {why.yourData}</p><p className="wo-note">{WHY_CAUTION}</p></section>;
 }

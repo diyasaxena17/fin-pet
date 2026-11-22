@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { categoryLabels, type TransactionCategory } from '@mochi/contracts';
 import { Sheet, RewardBadge, type SheetTab } from '../components/Sheet';
-import { Bar, Callout, Challenge, Empty, PulseButtons, TxnLine, VibeTagger } from './widgets';
+import { Bar, Callout, Challenge, Empty, PulseButtons, TxnLine, VibeTagger, WhyPanel } from './widgets';
+import type { WhyKey } from './insights';
 import { REWARDS, skippedDecisions, useSignals } from './store';
 import { cents, wishHoursLeft, wishStatus, type RegretRow, type TimeWindow } from './analytics';
 import { fmtDay, fmtDuration, fmtHours, fmtTime, fmtWhen, pct } from './format';
@@ -10,7 +11,7 @@ import { VIBES } from './types';
 
 export type SheetId = 'velocity' | 'circadian' | 'payday' | 'leaks' | 'intent' | 'checkins';
 const TAG = 'BEHAVIORAL SIGNAL';
-const reflectTabs = (first: SheetTab): SheetTab[] => [first, { id: 'challenge', label: 'Reflect', icon: '🌱' }];
+const reflectTabs = (first: SheetTab): SheetTab[] => [first, { id: 'why', label: 'Why', icon: '🧩' }, { id: 'challenge', label: 'Reflect', icon: '🌱' }];
 
 export function VelocitySheet({ onClose }: { onClose(): void }) {
   const { derived: { clusters } } = useSignals(); const [tab, setTab] = useState('main');
@@ -24,7 +25,7 @@ export function VelocitySheet({ onClose }: { onClose(): void }) {
         <p className="wo-big">{cents(c.totalCents)} <small>across {c.txns.length} purchases</small></p>
         {c.txns.map((t) => <TxnLine key={t.id} txn={t} />)}
       </div>) : <Empty>Clear. Nothing to flag in this period.</Empty>}
-    </> : <Challenge id="insight:velocity" question="When you catch yourself on a buying streak, which reset would you try first?" options={[
+    </> : tab === 'why' ? <WhyPanel k="velocity" /> : <Challenge id="insight:velocity" question="When you catch yourself on a buying streak, which reset would you try first?" options={[
       { id: 'pause', label: 'Pause 10 minutes before the next checkout', tip: 'A short gap breaks the momentum that clusters feed on.' },
       { id: 'vault', label: 'Park it in the 72-hour vault', tip: 'The vault turns “now” into “still want it Thursday?”' },
       { id: 'close', label: 'Close the shopping apps for the day', tip: 'Removing the cue is often easier than resisting it.' }]} />}
@@ -45,7 +46,7 @@ export function CircadianSheet({ onClose }: { onClose(): void }) {
         <p className="wo-note">Late-to-day spend ratio: <strong>{c.lateToDayRatio === null ? '—' : `${c.lateToDayRatio.toFixed(2)}×`}</strong> · late share of spend {pct(c.lateShareSpend)}</p>
       </div>
       {c.lateItems.length ? <><p className="wo-eyebrow wo-pad">LATE-NIGHT FOOD DELIVERY & E-COMMERCE</p>{c.lateItems.map((t) => <TxnLine key={t.id} txn={t} />)}</> : null}
-    </> : <Challenge id="insight:circadian" question="It's 11:40 PM and a delivery app is open. What's the kindest nudge for tomorrow-you?" options={[
+    </> : tab === 'why' ? <WhyPanel k="circadian" /> : <Challenge id="insight:circadian" question="It's 11:40 PM and a delivery app is open. What's the kindest nudge for tomorrow-you?" options={[
       { id: 'snack', label: 'Keep a ready-to-eat snack at home', tip: 'Hunger plus fatigue is the usual late-night driver.' },
       { id: 'logout', label: 'Log out of delivery apps after 10 PM', tip: 'Friction at the right hour beats willpower at the wrong one.' },
       { id: 'sleep', label: 'Set a wind-down alarm', tip: 'Protecting sleep protects decisions.' }]} />}
@@ -68,7 +69,7 @@ export function PaydaySheet({ onClose }: { onClose(): void }) {
           {w.spikeRatio === null ? '' : ` ${w.spikeRatio.toFixed(2)}× your baseline pace.`}</p>
         {w.spend.map((t) => <TxnLine key={t.id} txn={t} />)}
       </div>) : <Empty>No payroll deposits in this period.</Empty>}
-    </> : <Challenge id="insight:payday" question="Payroll just landed. Which move keeps the windfall from vanishing?" options={[
+    </> : tab === 'why' ? <WhyPanel k="payday" /> : <Challenge id="insight:payday" question="Payroll just landed. Which move keeps the windfall from vanishing?" options={[
       { id: 'sweep', label: 'Auto-move a slice to savings first', tip: 'Paying your goal first leaves less to drift.' },
       { id: 'wait', label: 'Wait 48 hours before big purchases', tip: 'Windfall urges fade faster than most expect.' },
       { id: 'cap', label: 'Set a payday-weekend cap', tip: 'A named limit makes the decision once, not repeatedly.' }]} />}
@@ -89,7 +90,7 @@ export function LeakSheet({ onClose }: { onClose(): void }) {
       </div>
       {l.habits.map((h) => <div className="wo-txn" key={h.label}><div><strong>{h.label}</strong>
         <small>{h.count}× · avg {cents(Math.round(h.avgCents))} · ~{cents(Math.round(h.weeklyCents))}/week</small></div><span className="wo-amount">−{cents(h.totalCents)}</span></div>)}
-    </> : <Challenge id="insight:leaks" question="Which swap would you trade your most frequent micro-leak for?" options={[
+    </> : tab === 'why' ? <WhyPanel k="leaks" /> : <Challenge id="insight:leaks" question="Which swap would you trade your most frequent micro-leak for?" options={[
       { id: 'batch', label: 'One planned batch-cook instead', tip: 'Converting autopilot spend into planned spend is the whole game.' },
       { id: 'cap', label: 'A weekly treat budget', tip: 'You keep the treat; you lose the surprise.' },
       { id: 'skip', label: 'Skip it twice a week', tip: 'Small cuts compound without feeling like a diet.' }]} />}
@@ -115,7 +116,7 @@ export function IntentSheet({ onClose }: { onClose(): void }) {
           <span className={`wo-chip ${e.outcome === 'purchased' ? 'wo-chip-amber' : 'wo-chip-mint'}`}>{e.outcome === 'purchased' ? 'BOUGHT' : 'RESISTED'}</span></div>)}
         {skippedDecisions.slice(-3).reverse().map((s) => <div className="wo-txn" key={s.id}><div><strong>Skipped purchase · {s.merchant}</strong><small>{fmtWhen(s.at)} · {cents(s.valueCents)} · from bank ledger</small></div>
           <span className="wo-chip wo-chip-mint">RESISTED</span></div>)}
-      </div></> : null}
+      </div><WhyPanel k="restraint" /></> : null}
     {tab === 'vault' ? <>
       <Callout title={res.score === null ? 'Vault is warming up' : `Impulse Resistance ${res.score.toFixed(0)}%`} reward={REWARDS.insight.nuts}>
         {res.resolved} resolved · {res.waiting} still waiting · {res.impulsive} bought inside 72 hours. Waiting items count once the 72 hours are up.</Callout>
@@ -132,6 +133,7 @@ export function IntentSheet({ onClose }: { onClose(): void }) {
             {status === 'waiting' ? `Waiting · ${fmtHours(wishHoursLeft(w, derived.nowMs))} left` : status === 'resisted' ? 'Resisted / Expired' : 'Purchased'}</span>
           <button type="button" className="wo-mini" onClick={() => dispatch({ type: 'setWishPurchased', id: w.id, purchased: status !== 'purchased' })}>
             {status === 'purchased' ? `Undo ${w.title}` : `I bought ${w.title}`}</button></div>; })}
+      <WhyPanel k="vault" />
     </> : null}
     {tab === 'corridor' ? <>
       <Callout title={`${geo.walkAways} near-miss walk-away${geo.walkAways === 1 ? '' : 's'}`} reward={REWARDS.insight.nuts}>
@@ -141,7 +143,7 @@ export function IntentSheet({ onClose }: { onClose(): void }) {
         <Bar label="Walk-in purchases" value={geo.walkIns} max={Math.max(geo.walkAways, geo.walkIns, 1)} tone="amber" right={String(geo.walkIns)} />
         {[...geoEvents].reverse().map((e) => <div className="wo-txn" key={e.id}><div><strong>{e.zone}</strong><small>{fmtWhen(e.at)} · {e.dwellMin} min dwell</small></div>
           <span className={`wo-chip ${e.outcome === 'walk_away' ? 'wo-chip-mint' : 'wo-chip-amber'}`}>{e.outcome === 'walk_away' ? 'WALKED AWAY' : 'BOUGHT'}</span></div>)}
-      </div></> : null}
+      </div><WhyPanel k="corridor" /></> : null}
   </Sheet>;
 }
 
@@ -160,6 +162,7 @@ export function CheckinSheet({ onClose }: { onClose(): void }) {
         {([...VIBES.map((v) => v.id), 'untagged'] as const).map((k) => <Bar key={k} label={vibeLabel(k)} value={derived.vibeStats[k].cents}
           max={Math.max(...Object.values(derived.vibeStats).map((v) => v.cents), 1)} tone={k === 'untagged' ? 'amber' : 'green'} right={`${derived.vibeStats[k].count} · ${cents(derived.vibeStats[k].cents)}`} />)}</div>
       {derived.queue.slice(0, 4).map((t) => <div className="wo-panel" key={t.id}><TxnLine txn={t} /><VibeTagger txn={t} /></div>)}
+      <WhyPanel k="vibes" />
     </> : <>
       <Callout title={rg.regretRate === null ? 'No answers yet' : `${pct(rg.regretRate)} regret rate`} reward={REWARDS.pulse.nuts}>
         {rg.answered} answered. 48 hours after an unplanned purchase, tell us if it was worth it. {derived.pulseQueue.length} waiting.</Callout>
@@ -167,6 +170,7 @@ export function CheckinSheet({ onClose }: { onClose(): void }) {
       <div className="wo-panel"><p className="wo-eyebrow">BY MERCHANT</p><RegretRows rows={rg.byMerchant} />
         <p className="wo-eyebrow wo-pad">BY TIME WINDOW</p><RegretRows rows={rg.byWindow} label={(k) => windowLabels[k as TimeWindow] ?? k} />
         <p className="wo-eyebrow wo-pad">BY VIBE</p><RegretRows rows={rg.byVibe} label={vibeLabel} /></div>
+      <WhyPanel k="regret" />
     </>}
   </Sheet>;
 }

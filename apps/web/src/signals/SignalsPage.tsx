@@ -1,7 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
 import { NutIcon } from '../components/Sheet';
-import { useAppState } from '../lib/appState';
 import { REWARDS, baseTransactions, ledgerMeta, useSignals } from './store';
 import { CheckinSheet, CircadianSheet, IntentSheet, LeakSheet, PaydaySheet, VelocitySheet, type SheetId } from './sheets';
 import { PulseButtons, TxnLine, VibeTagger } from './widgets';
@@ -9,9 +7,7 @@ import { cents } from './analytics';
 import { fmtHours, pct, simClockLabel } from './format';
 import { scenarioLabels, type ScenarioKey } from './overlay';
 
-type Section = 'passive' | 'intent' | 'checkins';
-const sections: { id: Section; label: string; icon: string }[] = [
-  { id: 'passive', label: 'Passive', icon: '📡' }, { id: 'intent', label: 'Intent', icon: '🛑' }, { id: 'checkins', label: 'Check-ins', icon: '🧠' }];
+export type Section = 'passive' | 'intent' | 'checkins' | 'lab';
 
 function ModuleCard({ icon, title, metric, detail, status, tone, onOpen }: { icon: string; title: string; metric: string; detail: string; status: string; tone: 'mint' | 'amber' | 'ochre'; onOpen(): void }) {
   return <button type="button" className="wo-module" onClick={onOpen} aria-label={`${title}: ${metric}. Open details`}>
@@ -20,30 +16,30 @@ function ModuleCard({ icon, title, metric, detail, status, tone, onOpen }: { ico
     <span className={`wo-chip wo-chip-${tone}`}>{status}</span></button>;
 }
 
-export function SignalsPage() {
-  const { state } = useAppState();
+const heads: Record<Section, [string, string, string]> = {
+  passive: ['PASSIVE SIGNALS', 'Spending patterns', 'Zero-effort patterns from the bank feed, with the psychology behind each. No scores, no shame.'],
+  intent: ['BEFORE CHECKOUT', 'Intent & restraint', 'The moments before a purchase: hesitation, the 72-hour vault, and the places that pull you in.'],
+  checkins: ['ACTIVE CONTEXT', 'Micro check-ins', 'One tap on the why, one tap two days later on whether it was worth it.'],
+  lab: ['TEST LAB', 'Simulation controls', 'Stress-test the analytics. Simulated data is always labelled and never changes the base ledger.'],
+};
+export function SignalsPage({ section }: { section: Section }) {
   const { state: s, derived: d, dispatch } = useSignals();
-  const [section, setSection] = useState<Section>('passive'); const [open, setOpen] = useState<SheetId | null>(null);
-  if (!state?.initialized) return <Navigate to="/onboarding" replace />;
+  const [open, setOpen] = useState<SheetId | null>(null);
   const close = () => setOpen(null);
   const recent = [...d.txns].filter((t) => t.kind !== 'transfer').slice(-4).reverse();
   const topVibe = d.queue[0]; const topPulse = d.pulseQueue[0];
   const spree = d.clusters.at(-1);
   const flaggedPayday = d.payday.windows.some((w) => w.flagged); const lastPayday = d.payday.windows.at(-1);
   return <div className="wo-page">
-    <header className="wo-hero"><p className="wo-eyebrow">ZERO-EFFORT INSIGHTS</p><h1>Behavioral signals</h1>
-      <p>Patterns from your mock bank feed, plus two taps of context. No scores, no shame.</p></header>
-    <section className="wo-panel wo-feed" aria-label="Mock bank feed">
-      <div className="wo-row"><p className="wo-eyebrow">MOCK BANK FEED · MAPLE STUDIO ACCOUNT</p><span className="wo-chip wo-chip-mint">{ledgerMeta.dataset}</span></div>
+    <header className="wo-hero"><p className="wo-eyebrow">{heads[section][0]}</p><h1>{heads[section][1]}</h1><p>{heads[section][2]}</p></header>
+    {section === 'passive' || section === 'lab' ? <section className="wo-panel wo-feed" aria-label="Mock bank feed">
+      <div className="wo-row"><p className="wo-eyebrow">MOCK BANK FEED · 14-DAY SIMULATED PERSONA</p><span className="wo-chip wo-chip-mint">{ledgerMeta.dataset}</span></div>
       <p className="wo-big">{cents(d.cashCents)} <small>cash · {d.txns.length} movements · {baseTransactions.length} from ledger</small></p>
       <p className="wo-note">Simulated clock: <strong>{simClockLabel(d.nowMs, s.clockHours)}</strong></p>
       {recent.map((t) => <div className="wo-txn" key={t.id}><div><strong>{t.merchant}</strong><small>{t.direction} · {t.category}{t.source === 'simulated' ? ' · SIMULATED' : ''}</small></div>
         <span className={`wo-amount ${t.direction === 'debit' ? '' : 'wo-credit'}`}>{t.direction === 'debit' ? '−' : '+'}{cents(t.amountCents)}</span></div>)}
-    </section>
-    <div className="wo-tabs-row" role="tablist" aria-label="Signal groups">
-      {sections.map((x) => <button key={x.id} type="button" role="tab" aria-selected={section === x.id} className="wo-pilltab" onClick={() => setSection(x.id)}><span aria-hidden="true">{x.icon}</span>{x.label}</button>)}
-    </div>
-    <div className="wo-stack" role="tabpanel" aria-label={sections.find((x) => x.id === section)!.label}>
+    </section> : null}
+    <div className="wo-stack">
       {section === 'passive' ? <>
         <ModuleCard icon="⚡" title="Transaction velocity" onOpen={() => setOpen('velocity')} tone={d.clusters.length ? 'amber' : 'mint'} status={d.clusters.length ? 'FLAGGED' : 'CLEAR'}
           metric={spree ? `${spree.txns.length} buys in ${Math.max(1, Math.round(spree.spanMinutes / 60 * 10) / 10)}h` : 'No spree'} detail={spree ? `${cents(spree.totalCents)} cluster · ${d.clusters.length} total` : '3+ non-essential buys in 4 hours'} />
@@ -72,7 +68,7 @@ export function SignalsPage() {
       </> : null}
     </div>
     <p className="wo-bonus" aria-live="polite">Mock rewards earned here: <strong>{s.nuts}</strong> <NutIcon size={13} /> · <strong>{s.xp}</strong> XP <small>UI-only demo rewards, not saved to the account</small></p>
-    <TestLab />
+    {section === 'lab' ? <TestLab /> : null}
     {open === 'velocity' ? <VelocitySheet onClose={close} /> : null}{open === 'circadian' ? <CircadianSheet onClose={close} /> : null}
     {open === 'payday' ? <PaydaySheet onClose={close} /> : null}{open === 'leaks' ? <LeakSheet onClose={close} /> : null}
     {open === 'intent' ? <IntentSheet onClose={close} /> : null}{open === 'checkins' ? <CheckinSheet onClose={close} /> : null}
@@ -81,7 +77,7 @@ export function SignalsPage() {
 
 function TestLab(): ReactNode {
   const { state: s, derived: d, dispatch } = useSignals();
-  return <details className="wo-lab"><summary>Test lab · simulation controls</summary>
+  return <details className="wo-lab" open><summary>Test lab · simulation controls</summary>
     <p className="wo-note">Scenarios layer labelled SIMULATED purchases on top of the unchanged ledger. Turn them off to return to the default contract data.</p>
     {(Object.keys(scenarioLabels) as ScenarioKey[]).map((k) => <label className="wo-switch" key={k}>
       <input type="checkbox" role="switch" checked={s.overlays[k]} onChange={() => dispatch({ type: 'toggleScenario', key: k })} />

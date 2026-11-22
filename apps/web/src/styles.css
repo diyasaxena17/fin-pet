@@ -224,3 +224,8 @@ body > .wo-sheet-layer { position: fixed; inset: 0; z-index: 60; }
 .level-card--complete .level-marker { border-color: #c9dec9; color: var(--wo-mint-ink); background: var(--wo-mint); }
 .level-card--future { background: var(--wo-sheet); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+/* "Why this happens" panel */
+.wo-why h3 { margin: 6px 0 4px; font-size: 1.05rem; font-weight: 800; color: var(--wo-ink, #1f2a24); }
+.wo-why p { margin: 6px 0; line-height: 1.45; }
+.wo-why .wo-yours { background: #fbf8f1; border: 1px solid var(--wo-border, #e3ddd0); border-radius: 12px; padding: 10px 12px; }
