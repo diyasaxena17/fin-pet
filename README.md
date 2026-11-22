@@ -26,7 +26,6 @@ nvm use
 corepack enable
 corepack prepare pnpm@10.34.9 --activate
 pnpm install --frozen-lockfile
-cp .env.example .env
 ```
 
 Installation enables the repository's Git hooks; run `pnpm setup:hooks` to enable
@@ -49,8 +48,9 @@ details and the optional LAN launcher.
 Open `http://localhost:5173`. Health: `http://localhost:3000/health` returns
 `{ "ok": true }`. Fresh state is `{ "initialized": false }`; the app launches
 onboarding. Vite binds `0.0.0.0:5173` and proxies `/api` to port 3000. Vite loads
-the root `.env`; frontend code receives only `VITE_` variables.
-The C++ backend reads process environment variables, so export API settings in its
+an optional root `.env`; frontend code receives only `VITE_` variables.
+No environment file is required for the default local setup. The C++ backend
+reads process environment variables, so export optional API settings in its
 terminal. Never put secrets in frontend variables or commit `.env` files.
 
 ## Working application flow
