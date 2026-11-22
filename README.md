@@ -12,6 +12,11 @@ persists state in SQLite. NFC/QR links can open the read-only daily report;
 rewards require an explicit check-in. Legacy feeding links still require
 confirmation.
 
+The home route `/` opens the forest companion preview with local demonstration
+state. Open `/?legacy=1` for the API-backed account dashboard, or `/signals` for
+behavioural tools; `/intent`, `/check-ins` and `/lab` remain available. The preview's
+hardware visuals are simulated. See [frontend routes and data sources](apps/web/README.md).
+
 The [PRD](docs/PRD.md) and [active API contract](docs/API_CONTRACT.md) define the
 current app scope. The original hardware proposal is retained only as a
 [historical reference](docs/reference/API_CONTRACT.original.txt).
@@ -46,7 +51,7 @@ Python 3 for tests. See the [backend setup guide](apps/api/README.md) for platfo
 details and the optional LAN launcher.
 
 Open `http://localhost:5173`. Health: `http://localhost:3000/health` returns
-`{ "ok": true }`. Fresh state is `{ "initialized": false }`; the app launches
+`{ "ok": true }`. Fresh state is `{ "initialized": false }`; the API-backed account dashboard launches
 onboarding. Vite binds `0.0.0.0:5173` and proxies `/api` to port 3000. Vite loads
 an optional root `.env`; frontend code receives only `VITE_` variables.
 No environment file is required for the default local setup. The C++ backend
