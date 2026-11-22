@@ -20,8 +20,13 @@ class FakeSource {
 }
 
 const onboarding = { petName: 'Hazel', goalTitle: 'Emergency fund', goalTarget: 200, letter: { vision: 'v', why: 'w', reminder: 'r' } };
-beforeEach(() => { Object.assign(api, createMockApi()); localStorage.clear(); });
-afterEach(cleanup);
+beforeEach(() => {
+  // Reproduce the early-UTC CI hour; this fixture's feed and mock app share the browser's local day.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-22T06:59:00Z'));
+  Object.assign(api, createMockApi({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+  localStorage.clear(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('Squirrel in the companion app (no hardware UI)', () => {
   it('opens the daily check-in on an NFC tap and sends the Pet tab’s moods to the bridge', async () => {

@@ -8,8 +8,13 @@ import { createMockApi } from '../lib/mockApi';
 import { App, PET_NAME_KEY } from './App';
 
 vi.mock('../lib/api', () => ({ api: {} }));
-beforeEach(() => { Object.assign(api, createMockApi()); localStorage.clear(); localStorage.setItem(PET_NAME_KEY, 'Tiger'); });
-afterEach(cleanup);
+beforeEach(() => {
+  // Reproduce the early-UTC CI hour; this fixture's feed and mock app share the browser's local day.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-22T06:59:00Z'));
+  Object.assign(api, createMockApi({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+  localStorage.clear(); localStorage.setItem(PET_NAME_KEY, 'Tiger'); });
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const mount = () => render(<MemoryRouter><AppProvider><App /></AppProvider></MemoryRouter>);
 const month = () => new Date().toISOString().slice(0, 7);
