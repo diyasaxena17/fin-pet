@@ -20,7 +20,8 @@ describe('behavioural shell', () => {
     mount();
     expect(screen.getByRole('heading', { name: 'Spending patterns' })).toBeTruthy();
     expect(screen.getByText('Your Winter Oak')).toBeTruthy();
-    expect(screen.getByLabelText('Level 1')).toBeTruthy();
+    expect(screen.getByLabelText('0 acorns collected')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Forest growth' }).getAttribute('aria-valuenow')).toBe('0');
     expect(screen.getByText(/0\/7 Behaviour Skills Sprouted/)).toBeTruthy();
     expect(screen.getByLabelText('Mock bank feed').textContent).toContain('behaviour-sandbox-14-v2');
     const links = within(screen.getByRole('navigation', { name: 'Main navigation' })).getAllByRole('link').map((l) => l.textContent);
@@ -52,7 +53,7 @@ describe('behavioural shell', () => {
     await user.click(within(dialog).getByRole('radio', { name: /Pause 10 minutes/ }));
     await user.click(cta);
     expect(within(dialog).getByRole('button', { name: /Collected/ })).toBeTruthy();
-    expect(screen.getByLabelText('10 Golden Nuts')).toBeTruthy();
+    expect(screen.getByLabelText('10 acorns collected')).toBeTruthy();
     expect(screen.getByText(/1\/7 Behaviour Skills Sprouted/)).toBeTruthy();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -64,7 +65,7 @@ describe('behavioural shell', () => {
     expect(within(card).getAllByRole('button')).toHaveLength(4);
     const before = Number(/(\d+) more waiting/.exec(card.textContent ?? '')![1]);
     await user.click(within(card).getByRole('button', { name: /Stressed/ }));
-    expect(screen.getByLabelText('3 Golden Nuts')).toBeTruthy();
+    expect(screen.getByLabelText('3 acorns collected')).toBeTruthy();
     expect(Number(/(\d+) more waiting/.exec(screen.getByLabelText('Micro check-in').textContent ?? '')![1])).toBe(before - 1);
     expect(screen.getByText(/5\/7|1\/7 Behaviour Skills Sprouted/)).toBeTruthy();
   });
