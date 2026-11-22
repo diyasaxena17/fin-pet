@@ -22,9 +22,8 @@ export function reactionFor(previous: AddendumAppState | null, next: AddendumApp
   if (!previous?.initialized || !next?.initialized) return null;
   const budget = next.budgetSummary;
   if (!previous.today.checkInCompleted && next.today.checkInCompleted) return budgetLetter(budget.spentToday, budget.dailyLimit) ?? 'p';
-  if (next.wallet.level > previous.wallet.level) return 'p';
+  // The tail only wags for real wins, so level ups and small savings don't move it.
   if (next.goal.progressPercent >= 100 && previous.goal.progressPercent < 100) return 'p';
-  if (next.goal.confirmedSaved > previous.goal.confirmedSaved) return 'p';
   if (budget.spentToday > previous.budgetSummary.spentToday) {
     const letter = budgetLetter(budget.spentToday, budget.dailyLimit);
     if (letter === 'w' || letter === 'd') return letter;

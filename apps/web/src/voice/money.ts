@@ -28,18 +28,23 @@ export function dailyReport(spent: number, budget: number, items: DailyItem[]) {
 
 export interface Goals { saveGoal: number; investGoal: number }
 export interface PeriodTotals { saved: number; invested: number; dayNum: number }
-/** final: judging a finished two-week period; otherwise progress so far. */
-export function periodMood(t: PeriodTotals, g: Goals, final: boolean): Mood {
-  const hitS = t.saved >= g.saveGoal, hitI = t.invested >= g.investGoal;
-  if (final) return hitS && hitI ? 'happy' : hitS || hitI ? 'worried' : 'sad';
-  const pace = t.dayNum / 14;
-  return (hitS && hitI) || (t.saved >= g.saveGoal * pace && t.invested >= g.investGoal * pace) ? 'happy' : 'worried';
+/** Meeting either goal is good news (happy dance); meeting neither is a worried face. */
+export function periodMood(t: PeriodTotals, g: Goals): Mood {
+  return t.saved >= g.saveGoal || t.invested >= g.investGoal ? 'happy' : 'worried';
 }
-export function periodReport(t: PeriodTotals, g: Goals, final: boolean) {
-  const mood = periodMood(t, g, final);
+/** The two-week summary: says plainly whether each goal was met. */
+export function periodReport(t: PeriodTotals, g: Goals) {
+  const mood = periodMood(t, g);
   const hitS = t.saved >= g.saveGoal, hitI = t.invested >= g.investGoal;
-  const facts = `${final ? 'The two-week period that ends today' : `Current two-week period, day ${t.dayNum} of 14`}: saved ${sayMoney(t.saved)} of a ${sayMoney(g.saveGoal)} savings goal (${hitS ? 'goal met' : 'short by ' + sayMoney(g.saveGoal - t.saved)}), invested ${sayMoney(t.invested)} of a ${sayMoney(g.investGoal)} investing goal (${hitI ? 'goal met' : 'short by ' + sayMoney(g.investGoal - t.invested)}).`;
-  const text = `${final ? 'Two-week check-in!' : 'Goal check!'} You saved ${sayMoney(t.saved)} of ${sayMoney(g.saveGoal)} and invested ${sayMoney(t.invested)} of ${sayMoney(g.investGoal)}. ${mood === 'happy' ? 'Amazing work!' : "Let's push a little more next time!"}`;
+  const saving = hitS
+    ? `You met your savings goal, saving ${sayMoney(t.saved)} of ${sayMoney(g.saveGoal)}.`
+    : `You haven't met your savings goal yet: ${sayMoney(t.saved)} of ${sayMoney(g.saveGoal)}, ${sayMoney(g.saveGoal - t.saved)} to go.`;
+  const investing = hitI
+    ? `You met your investing goal, investing ${sayMoney(t.invested)} of ${sayMoney(g.investGoal)}.`
+    : `You haven't met your investing goal yet: ${sayMoney(t.invested)} of ${sayMoney(g.investGoal)}, ${sayMoney(g.investGoal - t.invested)} to go.`;
+  const ending = hitS && hitI ? 'Both goals done, amazing work!' : hitS || hitI ? "That's a win! Let's get the other one next time." : "Let's push a little more next time!";
+  const text = `Two-week summary! ${saving} ${investing} ${ending}`;
+  const facts = `Two-week summary. Savings goal: ${hitS ? 'MET' : 'NOT met'} (saved ${sayMoney(t.saved)} of ${sayMoney(g.saveGoal)}). Investing goal: ${hitI ? 'MET' : 'NOT met'} (invested ${sayMoney(t.invested)} of ${sayMoney(g.investGoal)}). Clearly say for each goal whether it was met.`;
   return { mood, facts, text, hitSavings: hitS, hitInvesting: hitI };
 }
 
@@ -57,5 +62,5 @@ export function isGoodbye(text: string, petName = ''): boolean {
 export const YES = /^(yes|yeah|yep|yup|sure|ok(ay)?|please|go ahead|absolutely|of course|bet|say less|why not|yes please|do it|let'?s (hear|go)|tell me)\b/i;
 export const NO = /^(no|nope|nah|not (now|today|really)|skip|maybe later|later|no thanks|i'?m good)\b/i;
 export const DAILY_INTENT = /how did i do|daily (budget )?report|budget (check|report|update)|how much (have i|did i) spen[dt]|how much (do i have|have i got|is) left|end of (the )?day report/i;
-export const GOAL_INTENT = /(savings?|investing|investment) goals?|my goals|goals? check|biweekly|bi-weekly|how are my (savings|investments|goals)/i;
+export const GOAL_INTENT = /(savings?|investing|investment) goals?|my goals|goals? (check|summary|report)|bi-?\s?weekly|two[- ]?weeks?|fortnight|how are my (savings|investments|goals)/i;
 export const BRIEF_INTENT = /\b(daily|today'?s|morning|market|news)\s+(brief|briefing|summary|update|recap|report)\b|what'?s (happening|going on|new) (in|with) (the )?(market|markets|stocks|news|economy)|how (are|is) the (market|markets|stocks?) (doing|today)/i;

@@ -98,7 +98,7 @@ export class MochiBrain {
     this.listener.stop(); stopSpeaking();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     sleepChirp();
-    this.deps.send('sleep');
+    this.deps.send('sleep');          // the bridge does a goodbye tail wag, then sleeps
     this.deps.show({ type: 'awake', awake: false });
   }
 
@@ -123,7 +123,7 @@ export class MochiBrain {
     if (!this.awake) return;
     if (reply.startsWith('[CHEER]')) {
       reply = reply.replace('[CHEER]', '').trim();
-      this.mood('happy');
+      this.mood('happy', false);     // cheer on screen and in sound; the tail saves its wags for real goals
       const cheers = this.deps.persona().cheers;
       reply = cheers[Math.floor(Math.random() * cheers.length)] + ' ' + reply;
     }
@@ -142,9 +142,8 @@ export class MochiBrain {
   async goalCheck(onWake: boolean): Promise<void> {
     const goals = this.deps.goals();
     if (!goals) { if (!onWake) await this.say('Add your two-week savings and investing goals in the app, and I will keep track!'); return; }
-    const t = this.deps.totals();
-    const r = periodReport(t, goals, t.dayNum >= 14);
-    this.mood(r.mood);
+    const r = periodReport(this.deps.totals(), goals);
+    this.mood(r.mood);              // a happy tail-wag dance only when a goal is met
     await this.say(await this.phrase(r.facts, r.mood, r.text));
   }
 
@@ -163,10 +162,13 @@ export class MochiBrain {
     }
   }
 
-  /** Happy dance / worried / sad on the squirrel and the screen. */
-  mood(mood: Mood): void {
+  /**
+   * Happy dance / worried / sad on the screen and the squirrel. The tail only wags for the happy dance,
+   * which is kept for real wins (under budget, a goal met); worried and sad only change the eyes.
+   */
+  mood(mood: Mood, onSquirrel = true): void {
     this.moodUntil = Date.now() + MOOD_MS[mood];
-    this.deps.send(`mood:${MOOD_LETTER[mood]}`);
+    if (onSquirrel) this.deps.send(`mood:${MOOD_LETTER[mood]}`);
     this.deps.show({ type: 'mood', mood });
     if (mood === 'happy') playSound(this.deps.persona().sound); else worryTone();
   }
@@ -174,14 +176,8 @@ export class MochiBrain {
   private async say(text: string, resume = true): Promise<void> {
     this.listener.stop();
     this.deps.show({ type: 'say', text });
-    // Tail sways while talking, but never cuts off a dance or a worried face.
-    const wait = Math.max(0, this.moodUntil - Date.now());
-    const talk = setTimeout(() => { if (this.awake) this.deps.send('mood:t'); }, wait);
-    try { await this.speakFn(text, this.deps.persona()); }
-    finally {
-      clearTimeout(talk);
-      if (this.awake && Date.now() >= this.moodUntil) this.deps.send('mood:i');
-    }
+    // The tail stays still while talking: it only wags at wake-up, goodbye and for good news.
+    await this.speakFn(text, this.deps.persona());
     if (this.awake) this.touch();
     if (resume) this.listen();
   }

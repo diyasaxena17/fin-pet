@@ -6,6 +6,7 @@
 #   "sleep"                           -> sleep now (the app says goodbye)
 #   "app:here"                        -> the app is open, so it gives the spoken reports instead
 # Letters: i idle, p happy dance, w worried, d sad, t talking, z sleep. After 10 quiet minutes it sleeps.
+# The tail only moves for the happy dance: waking up, saying goodbye, and good news.
 # Closing this window also puts the squirrel to sleep.
 param(
   [string]$Backend = "http://localhost:3000",
@@ -70,8 +71,9 @@ function Wake([string]$why) {
 }
 function Go-Sleep([string]$why) {
   $script:awake = $false; $script:reportAt = $null
+  Send-Squirrel "p"; Start-Sleep -Milliseconds 2900   # goodbye tail wag, then sleep
   Send-Squirrel "z"
-  Say "$why -> asleep" Cyan
+  Say "$why -> goodbye wag, asleep" Cyan
 }
 function Handle([string]$text) {
   $t = $text.Trim().ToLower()

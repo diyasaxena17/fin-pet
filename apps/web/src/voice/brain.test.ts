@@ -35,8 +35,9 @@ describe('Mochi talking brain', () => {
     expect(said[0]).toMatch(/Tiger is awake/);
     expect(said[1]).toMatch(/over your 45 dollars budget/);       // plain report when Gemini is unreachable
     expect(sent).toContain('mood:w');                              // 53.44 of 45: worried
-    expect(said[2]).toMatch(/Two-week check-in! You saved 180 dollars of 150 dollars and invested 150 dollars/);
-    expect(sent).toContain('mood:p');                              // both goals met: happy dance
+    expect(said[2]).toMatch(/Two-week summary! You met your savings goal, saving 180 dollars of 150 dollars\. You met your investing goal/);
+    expect(sent).toContain('mood:p');                              // goals met: tail-wag dance
+    expect(sent).not.toContain('mood:t');                          // the tail stays still while talking
     expect(said[3]).toBe("Do you want to hear today's money news summary?");
     expect(listener.start).toHaveBeenCalled();
     expect(brain.awake).toBe(true);
@@ -68,8 +69,15 @@ describe('Mochi talking brain', () => {
     expect(said[0]).toMatch(/No worries/);
     await brain.hear('how did I do today');
     expect(said.at(-1)).toMatch(/stayed 6 dollars and 56 cents under/);
-    await brain.hear('how are my savings');
-    expect(said.at(-1)).toMatch(/Two-week check-in/);
+    await brain.hear('give me my biweekly summary');
+    expect(said.at(-1)).toMatch(/Two-week summary!/);
+  });
+
+  it('only wags for good news: no dance when no goal is met, and none for chat cheers', async () => {
+    const { brain, sent } = setup({ money: () => ({ budget: 45, spent: 53.44, items: [] }), totals: () => ({ saved: 10, invested: 5, dayNum: 14 }) });
+    await brain.tap();
+    expect(sent.filter(m => m === 'mood:p')).toEqual([]);
+    expect(sent).toContain('mood:w');
   });
 
   it('asks for a budget first when none is set', async () => {

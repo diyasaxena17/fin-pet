@@ -36,10 +36,11 @@ describe('app events → squirrel reactions', () => {
     expect(reactionFor(before, withChanges(s => { s.today.checkInCompleted = true; daily(s, 40, 25); }))).toBe('d');
     expect(reactionFor(before, withChanges(s => { s.today.checkInCompleted = true; daily(s, 0, null); }))).toBe('p');
   });
-  it('dances for level ups and savings', () => {
-    const before = base();
-    expect(reactionFor(before, withChanges(s => { s.wallet.level = 3; }))).toBe('p');
-    expect(reactionFor(before, withChanges(s => { s.goal.confirmedSaved += 5; }))).toBe('p');
+  it('saves tail wags for real wins: reaching the goal, not level ups or small savings', () => {
+    const before = withChanges(s => { s.goal.progressPercent = 90; });
+    expect(reactionFor(before, withChanges(s => { s.goal.progressPercent = 100; }))).toBe('p');
+    expect(reactionFor(before, withChanges(s => { s.goal.progressPercent = 90; s.wallet.level = 3; }))).toBeNull();
+    expect(reactionFor(before, withChanges(s => { s.goal.progressPercent = 90; s.goal.confirmedSaved += 5; }))).toBeNull();
   });
   it('worries when new spending goes over the daily budget, and stays quiet when it does not', () => {
     const before = withChanges(s => daily(s, 10, 25));

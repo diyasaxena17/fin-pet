@@ -15,10 +15,13 @@ describe('Mochi money rules (same as the original app)', () => {
   });
   it('judges the two-week goals', () => {
     const t = { saved: 180, invested: 150, dayNum: 14 };
-    expect(periodMood(t, { saveGoal: 150, investGoal: 150 }, true)).toBe('happy');
-    expect(periodMood(t, { saveGoal: 200, investGoal: 150 }, true)).toBe('worried');
-    expect(periodMood(t, { saveGoal: 200, investGoal: 200 }, true)).toBe('sad');
-    expect(periodReport(t, { saveGoal: 200, investGoal: 150 }, true).facts).toContain('short by 20 dollars');
+    expect(periodMood(t, { saveGoal: 150, investGoal: 150 })).toBe('happy');
+    expect(periodMood(t, { saveGoal: 200, investGoal: 150 })).toBe('happy');     // one goal met is still a win
+    expect(periodMood(t, { saveGoal: 200, investGoal: 200 })).toBe('worried');
+    const r = periodReport(t, { saveGoal: 200, investGoal: 150 });
+    expect(r.text).toContain("You haven't met your savings goal yet: 180 dollars of 200 dollars, 20 dollars to go.");
+    expect(r.text).toContain('You met your investing goal, investing 150 dollars of 150 dollars.');
+    expect(r.facts).toContain('Savings goal: NOT met');
   });
   it('knows when you say goodbye', () => {
     for (const t of ['good night', 'bye bye', 'Goodbye Tiger!', 'ok bye', 'see you later', 'that\'s all']) expect(isGoodbye(t, 'Tiger')).toBe(true);
@@ -29,6 +32,7 @@ describe('Mochi money rules (same as the original app)', () => {
     expect(NO.test('nah')).toBe(true);
     expect(DAILY_INTENT.test('how did I do today')).toBe(true);
     expect(GOAL_INTENT.test('how are my savings')).toBe(true);
+    for (const t of ['give me my biweekly summary', 'bi weekly summary', 'how did my two week goals go']) expect(GOAL_INTENT.test(t)).toBe(true);
     expect(BRIEF_INTENT.test("what's happening in the market")).toBe(true);
   });
 });

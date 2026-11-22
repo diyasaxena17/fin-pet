@@ -15,8 +15,6 @@ import { getGoals } from '../voice/goals';
 import { getPersona, PERSONAS, setPersona } from '../voice/personas';
 import { speak } from '../voice/speech';
 
-/** On-screen moods → the physical squirrel's letters (see hardware-connection/squirrel.ino). */
-const HARDWARE_LETTER = { happy: 'p', worried: 'w', alert: 't' };
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export const PET_NAME_KEY = 'mochi.petName';
@@ -70,7 +68,6 @@ export function App() {
 
   // Trigger temporary celebration tail wag
   const triggerCelebration = (customSpeech, customMood = 'happy') => {
-    squirrel?.react(HARDWARE_LETTER[customMood] ?? 'p');
     setHardwareMood(customMood);
     setIsWagging(true);
     if (customSpeech) setSpeechBubble(customSpeech);
@@ -92,7 +89,6 @@ export function App() {
   const previewVoice = (id) => {
     setPersona(id); setPersonaId(id);
     const p = PERSONAS.find((x) => x.id === id);
-    squirrel?.react('t');
     void speak(`Hi! I'm ${petName}. Let's make your money happy.`, p);
   };
   const twoWeeks = twoWeekTotals();

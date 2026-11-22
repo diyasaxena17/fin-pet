@@ -22,9 +22,9 @@ hardware owner. Nothing here changes the app, API, contracts or lockfile.
 | --- | --- |
 | `i` | Idle: pink, blinking |
 | `p` | Happy dance: ^ ^ eyes, tail wag (about 2.5 s), then idle |
-| `w` | Worried: orange, shaking eyes (5 s) |
-| `d` | Sad: blue, droopy eyes, tears (5 s) |
-| `t` | Talking: idle eyes with a gentle tail sway |
+| `w` | Worried: orange, shaking eyes (5 s), tail still |
+| `d` | Sad: blue, droopy eyes, tears (5 s), tail still |
+| `t` | Talking: idle eyes (tail still) |
 | `z` | Sleep: screen and backlight off, servo released |
 
 The sketch replies `READY` at start and `OK <letter>` per command. It starts
