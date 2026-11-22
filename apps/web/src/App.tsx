@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 const CompanionApp = lazy(() => import('./mochi-ui/App').then(module => ({ default: module.App })));
@@ -10,17 +10,10 @@ export function App() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const signals = signalPaths.has(pathname);
-  const legacyRoute = !signals && (pathname !== '/' || searchParams.get('legacy') === '1');
-  const [legacyMode, setLegacyMode] = useState(legacyRoute);
-  useEffect(() => {
-    if (signals) setLegacyMode(false);
-    else if (legacyRoute) setLegacyMode(true);
-  }, [signals, legacyRoute]);
+  const winterOakRoute = pathname === '/oak';
+  const legacyRoute = !signals && !winterOakRoute && (pathname !== '/' || searchParams.get('legacy') === '1');
   return <Suspense fallback={<p role="status">Loading your forest…</p>}>
-    {signals ? <><Link className="text-link" to="/">Forest home</Link><SignalsApp /></>
-      : legacyRoute || legacyMode ? <LegacyApp />
-        : <><nav aria-label="Experience navigation" className="flex justify-center gap-4 p-2">
-          <Link to="/signals">Behavioural tools</Link><Link to="/oak">Learn: Winter Oak</Link><Link to="/?legacy=1">Account dashboard</Link>
-        </nav><CompanionApp /></>}
+    {signals ? <><Link className="experience-home-link" to="/">Forest home</Link><SignalsApp /></>
+      : legacyRoute ? <LegacyApp /> : <CompanionApp />}
   </Suspense>;
 }

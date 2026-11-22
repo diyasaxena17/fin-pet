@@ -35,7 +35,7 @@ export const INITIAL_BRANCHES = [
         completed: false,
         summary: 'Data shows 68% of buyer’s remorse happens between 11 PM and 3 AM due to decision fatigue. Put carts in a 48-hr vault!',
         challengeType: 'scenario',
-        question: 'It is 12:40 AM during finals week. You have a $34 food delivery cart open. What earns you +30 Golden Nuts?',
+        question: 'It is 12:40 AM during finals week. You have a $34 food delivery cart open. What earns you +30 acorns?',
         options: [
           { text: 'Order now & promise to skip lunch tomorrow', correct: false },
           { text: 'Drop it in the 48-Hr Wishlist Vault & drink water', correct: true },
@@ -138,7 +138,7 @@ export const INITIAL_BRANCHES = [
   {
     id: 'investing',
     title: 'Investing & Emergency Stash',
-    subtitle: 'Crown Canopy (420 Nuts)',
+    subtitle: 'Crown Canopy (420 acorns)',
     pillar: 'Long-Term Resilience',
     color: '#7C2D12',
     accent: '#EA580C',

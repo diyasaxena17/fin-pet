@@ -10,7 +10,6 @@ import type { BankTxn, Pulse, Vibe, WishItem } from './types';
 
 /** Mock rewards for the demo. They live only in this UI layer. */
 export const REWARDS = { vibe: { nuts: 3, xp: 5 }, pulse: { nuts: 5, xp: 8 }, insight: { nuts: 10, xp: 15 } } as const;
-export const XP_PER_LEVEL = 50;
 
 const ledger = buildSandboxLedger();
 const adapted = adaptLedger(ledger);
@@ -101,7 +100,7 @@ export function deriveSignals(state: SignalsState) {
   const sproutedCount = sprouted.filter(Boolean).length;
   return {
     nowMs, txns, cashCents: cashOf(txns, OPENING_CASH_CENTS),
-    hud: { level: 1 + Math.floor(state.xp / XP_PER_LEVEL), sprouted, sproutedCount, growthPercent: Math.round((sproutedCount / sprouted.length) * 100),
+    hud: { sprouted, sproutedCount, growthPercent: Math.round((sproutedCount / sprouted.length) * 100),
       capCents: ledgerDailyLimitCents, todaySpentCents },
     clusters: findClusters(txns), circadian: circadianProfile(txns), payday: paydayProfile(txns), leaks: microLeaks(txns),
     restraint: restraintSummary(intentEvents, skippedDecisions), resistance: impulseResistance(state.wishlist, nowMs), geo: geofenceSummary(geoEvents),

@@ -20,7 +20,7 @@ const nodeStyles: Record<BranchState, string> = {
 };
 
 function describe(branch: Branch, state: BranchState, done: number, total: number): string {
-  if (state === 'locked') return `${branch.title}, locked, unlocks at ${branch.unlockCost} Golden Nuts`;
+  if (state === 'locked') return `${branch.title}, locked, unlocks at ${branch.unlockCost} acorns`;
   if (state === 'sprouted') return `${branch.title}, sprouted, all ${total} lessons complete`;
   return `${branch.title}, ${done} of ${total} lessons complete`;
 }

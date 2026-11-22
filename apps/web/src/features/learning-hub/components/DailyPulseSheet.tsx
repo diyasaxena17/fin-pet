@@ -50,14 +50,14 @@ export function DailyPulseSheet({ streak, dailyNuts, next, onStartNext, onClose 
         <p className="mt-2 text-xs text-[#5F6E63]">
           {dailyNuts >= DAILY_GOAL_NUTS
             ? 'Goal reached. Pip is happy, and your streak is safe for today.'
-            : `Earn ${DAILY_GOAL_NUTS - shown} more nuts today to hit your goal and keep your streak growing.`}
+            : `Collect ${DAILY_GOAL_NUTS - shown} more acorns today to hit your goal and keep your streak growing.`}
         </p>
         <div className="mt-5 rounded-2xl bg-[#EFE9DC] p-4">
           <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.12em] text-[#8A4B1F]">Up next</p>
           {next ? (
             <>
               <p className="mt-1 text-sm font-extrabold text-[#1F3B2D]">{next.quest.title}</p>
-              <p className="text-xs text-[#5F6E63]">{next.branch.title} · {next.quest.minutes} min · +{next.quest.nuts} nuts</p>
+              <p className="text-xs text-[#5F6E63]">{next.branch.title} · {next.quest.minutes} min · +{next.quest.nuts} acorns</p>
             </>
           ) : (
             <p className="mt-1 text-sm font-bold text-[#1F3B2D]">Nothing left to unlock right now. Earn more nuts to reveal the next branch.</p>

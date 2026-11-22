@@ -1,4 +1,4 @@
-import { DAILY_GOAL_NUTS, levelInfo } from '../lib/progress';
+import { DAILY_GOAL_NUTS } from '../lib/progress';
 import { CheckIcon, NutIcon, PulseIcon } from './icons';
 
 interface Props {
@@ -13,7 +13,6 @@ interface Props {
 }
 
 export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sproutedCount, branchCount, grownPercent, onOpenPulse }: Props) {
-  const { level } = levelInfo(totalNuts);
   const goalMet = dailyNuts >= DAILY_GOAL_NUTS;
 
   return (
@@ -35,7 +34,7 @@ export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sprout
           </button>
           <span
             data-testid="nuts-balance"
-            aria-label={`${totalNuts} Golden Nuts`}
+            aria-label={`${totalNuts} acorns collected`}
             className="inline-flex items-center gap-1.5 rounded-full border border-[#E7C777] bg-[#FBEBC4] px-3 py-1.5 text-sm font-extrabold text-[#6B3F12]"
           >
             <NutIcon className="h-4 w-4" />
@@ -45,12 +44,6 @@ export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sprout
       </div>
 
       <div className="mt-4 flex items-center gap-3">
-        <span
-          aria-label={`Level ${level}`}
-          className="grid h-12 w-12 flex-none place-items-center rounded-2xl border border-[#D8CFBA] bg-[#EFE9DB] text-sm font-extrabold text-[#2F4A3B]"
-        >
-          Lv.{level}
-        </span>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[1.05rem] font-extrabold leading-tight text-[#1F3B2D]">{petName}&rsquo;s Winter Oak</h1>
           <p className="text-xs text-[#5F6E63]">
@@ -76,7 +69,7 @@ export function TreeTopBar({ petName, nfcConnected, totalNuts, dailyNuts, sprout
           <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#C77D2E]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.2 2.2M15.5 15.5l2.2 2.2M17.7 6.3l-2.2 2.2M8.5 15.5l-2.2 2.2" />
           </svg>
-          Tap any glowing branch to learn &amp; earn Nuts
+          Tap any glowing branch to learn &amp; collect acorns
         </p>
         <p data-testid="grown" className="font-extrabold text-[#1F3B2D]">{grownPercent}% Grown</p>
       </div>

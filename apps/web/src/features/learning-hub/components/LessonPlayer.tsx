@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { LessonStep, Quest, QuestionStep } from '../types';
-import { DAILY_GOAL_NUTS, levelInfo } from '../lib/progress';
+import { DAILY_GOAL_NUTS } from '../lib/progress';
 import { CheckIcon, FlameIcon, NutIcon, TargetIcon } from './icons';
 import { PrimaryButton } from './PrimaryButton';
 
@@ -55,7 +55,7 @@ export function LessonPlayer({ quest, branchTitle, alreadyCompleted, stats, bran
   const questionTotal = quest.steps.filter(isQuestion).length;
   const step = quest.steps[index];
   const isLast = index === total - 1;
-  const collectLabel = wasCompleted ? 'Finish practice' : `Collect +${quest.nuts} Golden Nuts`;
+  const collectLabel = wasCompleted ? 'Finish practice' : `Collect +${quest.nuts} acorns`;
   const pct = finished ? 100 : Math.round((index / total) * 100);
 
   function next() {
@@ -71,7 +71,6 @@ export function LessonPlayer({ quest, branchTitle, alreadyCompleted, stats, bran
 
   if (finished) {
     const accuracy = questionTotal === 0 ? 100 : Math.round((correctCount / questionTotal) * 100);
-    const { level } = levelInfo(stats.totalNuts);
     const earned = wasCompleted ? 0 : quest.nuts;
     const justSprouted = branchSprouted && !wasCompleted;
     return (
@@ -84,7 +83,7 @@ export function LessonPlayer({ quest, branchTitle, alreadyCompleted, stats, bran
           <p className="text-sm text-[#5F6E63]">{quest.title}</p>
           {wasCompleted ? (
             <p role="status" className="mt-3 rounded-2xl bg-[#EFE9DC] p-3 text-sm text-[#4B5A4F]">
-              You already finished this lesson, so this run was free practice. No new nuts this time.
+              You already finished this lesson, so this run was free practice. No new acorns this time.
             </p>
           ) : null}
           {justSprouted ? (
@@ -94,7 +93,7 @@ export function LessonPlayer({ quest, branchTitle, alreadyCompleted, stats, bran
           ) : null}
           <dl className="mt-5 grid grid-cols-3 gap-2 text-left">
             <div className="rounded-2xl bg-[#FBEBC4] p-3">
-              <dt className="text-[0.6rem] font-extrabold uppercase tracking-[0.1em] text-[#8A5416]">Nuts earned</dt>
+              <dt className="text-[0.6rem] font-extrabold uppercase tracking-[0.1em] text-[#8A5416]">Acorns collected</dt>
               <dd data-testid="nuts-earned" className="text-lg font-extrabold text-[#6B3F12]">+{earned}</dd>
             </div>
             <div className="rounded-2xl bg-[#EFE9DC] p-3">
@@ -102,8 +101,8 @@ export function LessonPlayer({ quest, branchTitle, alreadyCompleted, stats, bran
               <dd className="text-lg font-extrabold text-[#1F3B2D]">{accuracy}%</dd>
             </div>
             <div className="rounded-2xl bg-[#EFE9DC] p-3">
-              <dt className="text-[0.6rem] font-extrabold uppercase tracking-[0.1em] text-[#6B7A6F]">Level</dt>
-              <dd className="text-lg font-extrabold text-[#1F3B2D]">{level}</dd>
+              <dt className="text-[0.6rem] font-extrabold uppercase tracking-[0.1em] text-[#6B7A6F]">Tree</dt>
+              <dd className="text-lg font-extrabold text-[#1F3B2D]">{branchSprouted ? 'Sprouted' : 'Growing'}</dd>
             </div>
           </dl>
           <ul className="m-0 mt-4 grid list-none gap-2 p-0 text-left text-sm font-bold text-[#33463A]">
