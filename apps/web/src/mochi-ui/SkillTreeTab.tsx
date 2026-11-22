@@ -4,7 +4,7 @@ import { HardwareSquirrel } from './HardwareSquirrel';
 const { Sparkles, Volume2, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Award, BookOpen, Sliders, TreePine, BarChart3, Bot, ChevronRight, X, Zap, Moon, Clock, Heart, Edit3, Check, RefreshCw, ArrowUpRight, Coins, GraduationCap, Landmark, Wallet } = Icons;
 
 export function SkillTreeTab(props) {
-  const { activeTab, branches, acorns, plantedAcorns, canopyGrowth, plantAcorn, handleSelectBranch, totalLessons, completedLessons, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
+  const { activeTab, branches, goldenNuts, handleSelectBranch, totalLessons, completedLessons, treeLevel, isUnderBudget, dailySpent, dailyLimit, handleToggleBudgetSimulation, petName, hardwareMood, isWagging, speechBubble, voiceProfile, playPetChime, triggerCelebration, selectedBranch, setSelectedBranch, activeLessonIndex, setActiveLessonIndex, selectedAnswer, setSelectedAnswer, sliderGuess, setSliderGuess, lessonFeedback, setLessonFeedback, toastMessage, showToast, vibeTagged, regretVoted, handleVibeCheck, handleRegretPulse, setBranches, setHardwareMood, setIsWagging, setSpeechBubble, isEditingName, setIsEditingName, tempName, setTempName, setPetName, setVoiceProfile } = props;
   return (
     <>
           {activeTab === 'tree' && (
@@ -13,10 +13,10 @@ export function SkillTreeTab(props) {
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-[#5C4033] flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-                  Tap a branch to learn and collect acorns
+                  Tap any glowing branch to learn & earn Nuts
                 </span>
                 <span className="text-[11px] font-bold text-[#2D6A4F]">
-                  {Math.min(100, Math.round((plantedAcorns / 12) * 100))}% Tree grown
+                  {Math.round((completedLessons / totalLessons) * 100)}% Grown
                 </span>
               </div>
 
@@ -68,11 +68,11 @@ export function SkillTreeTab(props) {
                       fill="#40916C"
                     />
 
-                    {/* Canopy expands as acorns are planted. */}
+                    {/* Back Canopy Foliage Clusters (Grows richer with goldenNuts) */}
                     <g opacity="0.92">
-                      <circle cx="185" cy="132" r={58 + canopyGrowth * 1.6} fill="url(#canopyBack)" />
-                      <circle cx="115" cy="182" r={48 + canopyGrowth * 1.2} fill="url(#canopyBack)" />
-                      <circle cx="255" cy="178" r={50 + canopyGrowth * 1.2} fill="url(#canopyBack)" />
+                      <circle cx="185" cy="132" r={68 + treeLevel * 3} fill="url(#canopyBack)" />
+                      <circle cx="115" cy="182" r={54 + treeLevel * 2} fill="url(#canopyBack)" />
+                      <circle cx="255" cy="178" r={56 + treeLevel * 2} fill="url(#canopyBack)" />
                       <circle cx="145" cy="112" r="46" fill="#2D6A4F" />
                       <circle cx="228" cy="112" r="48" fill="#2D6A4F" />
                     </g>
@@ -112,13 +112,25 @@ export function SkillTreeTab(props) {
                       strokeWidth="2"
                     />
 
-                    {/* Acorns planted in the tree appear along its branches. */}
-                    {[[86, 228], [292, 218], [144, 82], [245, 125], [105, 145], [263, 165], [178, 65], [73, 180], [224, 215], [164, 203], [126, 104], [278, 102]]
-                      .slice(0, Math.min(plantedAcorns, 12))
-                      .map(([x, y], index) => <g className="float-slow" key={`${x}-${y}`}>
-                        <ellipse cx={x} cy={y} rx="5" ry="6.5" fill={index % 2 ? '#F59E0B' : '#FBBF24'} />
-                        <path d={`M${x - 5} ${y - 3} Q${x} ${y - 7} ${x + 5} ${y - 3} Z`} fill="#78350F" />
-                      </g>)}
+                    {/* Decorative Hanging Golden Acorns Earned by User */}
+                    {goldenNuts >= 300 && (
+                      <g className="float-slow">
+                        <ellipse cx="86" cy="228" rx="5" ry="6.5" fill="#F59E0B" />
+                        <path d="M81 225 Q86 221 91 225 Z" fill="#78350F" />
+                      </g>
+                    )}
+                    {goldenNuts >= 350 && (
+                      <g className="float-slow">
+                        <ellipse cx="292" cy="218" rx="5" ry="6.5" fill="#F59E0B" />
+                        <path d="M287 215 Q292 211 297 215 Z" fill="#78350F" />
+                      </g>
+                    )}
+                    {goldenNuts >= 400 && (
+                      <g className="float-slow">
+                        <ellipse cx="144" cy="82" rx="5" ry="6.5" fill="#FBBF24" />
+                        <path d="M139 79 Q144 75 149 79 Z" fill="#78350F" />
+                      </g>
+                    )}
 
                     {/* INTERACTIVE CLICKABLE BRANCH NODES */}
                     {branches.map((branch) => {
@@ -232,15 +244,6 @@ export function SkillTreeTab(props) {
                     })}
                   </svg>
                 </div>
-                <div className="mt-2 flex w-full max-w-[420px] items-center justify-between gap-3 rounded-2xl border border-[#D8CFBA] bg-white/90 px-4 py-3 shadow-sm">
-                  <div>
-                    <strong className="block text-sm text-[#1B4332]">Plant an acorn</strong>
-                    <span className="text-xs text-[#6B5E51]">{acorns} ready, {plantedAcorns} planted</span>
-                  </div>
-                  <button type="button" disabled={acorns < 1} onClick={plantAcorn} className="rounded-xl bg-[#2D6A4F] px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-                    Plant acorn
-                  </button>
-                </div>
               </div>
 
               {/* 3. DOCKED HARDWARE SQUIRREL COMPANION & BEHAVIORAL SPEECH BUBBLE */}
@@ -253,7 +256,7 @@ export function SkillTreeTab(props) {
                       size="md"
                       onClick={() =>
                         triggerCelebration(
-                          petName ? `Chirp! ${petName} is cheering you on! Tap a tree branch or check your daily report.` : 'Your companion is cheering you on. Set up a name in Profile.',
+                          `Chirp! ${petName} is cheering you on! Tap a tree branch or check your daily report.`,
                           'happy'
                         )
                       }
@@ -262,7 +265,7 @@ export function SkillTreeTab(props) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-1">
                       <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#92400E] flex items-center gap-1">
-                        <span>🐾 {petName || 'Your companion'}</span>
+                        <span>🐾 {petName}</span>
                         <span className="text-[10px] font-medium text-[#78716C]">
                           • {hardwareMood === 'happy' ? 'Happy Dance' : hardwareMood === 'worried' ? 'Worried Eyes' : 'NFC Active'}
                         </span>

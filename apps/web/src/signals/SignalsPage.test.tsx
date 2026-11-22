@@ -19,7 +19,7 @@ describe('behavioural shell', () => {
   it('shows only behavioural sections, with a HUD derived from signals and the persona ledger', () => {
     mount();
     expect(screen.getByRole('heading', { name: 'Spending patterns' })).toBeTruthy();
-    expect(screen.getByText('Your Winter Oak')).toBeTruthy();
+    expect(screen.getByText('Pip’s Winter Oak')).toBeTruthy();
     expect(screen.getByLabelText('Level 1')).toBeTruthy();
     expect(screen.getByText(/0\/7 Behaviour Skills Sprouted/)).toBeTruthy();
     expect(screen.getByLabelText('Mock bank feed').textContent).toContain('behaviour-sandbox-14-v2');

@@ -30,7 +30,7 @@ export function Challenge({ id, question, options }: { id: string; question: str
     </div>
     {chosen && done ? <p className="wo-tip" role="status">{chosen.tip}</p> : null}
     <button type="button" className="wo-cta" disabled={done || !picked} onClick={() => dispatch({ type: 'collect', id })}>
-      {done ? `Collected +${REWARDS.insight.nuts} acorns ✓` : `Submit & Collect +${REWARDS.insight.nuts} acorns`}</button>
+      {done ? `Collected +${REWARDS.insight.nuts} Golden Nuts ✓` : `Submit & Collect +${REWARDS.insight.nuts} Golden Nuts`}</button>
   </div>;
 }
 
