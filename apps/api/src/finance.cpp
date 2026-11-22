@@ -1,11 +1,13 @@
 #include "finance.hpp"
 #include "contract_rules.hpp"
 #include <chrono>
+#include <atomic>
 #include <regex>
 #include <set>
 
 namespace mochi {
 namespace {
+std::atomic<std::int64_t> demo_clock{-1};
 [[noreturn]] void invalid() { throw ApiError(400, "INVALID_REQUEST", "Invalid request data."); }
 void keys(const Json& value, std::initializer_list<const char*> expected) {
   if (!value.is_object() || value.size() != expected.size()) invalid();
@@ -71,7 +73,11 @@ Json finance_mutation_response(Action action, const Json& state, const Json& inp
   }
   return app_state(state, day);
 }
+void set_demo_clock(std::int64_t millis) { demo_clock.store(millis); }
+std::time_t game_now() { return static_cast<std::time_t>(current_millis() / 1000); }
 std::int64_t current_millis() {
+  const auto fixed = demo_clock.load();
+  if (fixed >= 0) return fixed;
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 std::int64_t timestamp_millis(const Json& timestamp) {

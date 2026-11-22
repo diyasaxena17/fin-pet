@@ -26,7 +26,7 @@ def request_id():
 
 
 class Server:
-    def __init__(self, db_path, demo=True, device=False, port=None):
+    def __init__(self, db_path, demo=True, device=False, port=None, extra_env=None):
         if port is None:
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1', 0))
@@ -37,7 +37,7 @@ class Server:
         self.process = subprocess.Popen([BINARY], stdout=self.log, stderr=self.log, env={
             **os.environ, 'DB_PATH': str(db_path), 'API_HOST': '127.0.0.1', 'PORT': str(self.port),
             'DEMO_MODE': str(demo).lower(), 'ENABLE_DEVICE_API': str(device).lower(),
-            'DEMO_TIME_ZONE': 'America/Toronto'})
+            'DEMO_TIME_ZONE': 'America/Toronto', **(extra_env or {})})
         for _ in range(100):
             if self.process.poll() is not None:
                 self.log.seek(0)
@@ -136,6 +136,10 @@ class HttpTests(unittest.TestCase):
             db.execute('PRAGMA user_version=1')
             history = db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall()
             decisions = db.execute('SELECT * FROM decisions').fetchall()
+        copied = self.db.with_name('v1-copy.sqlite3')
+        with sqlite3.connect(self.db) as source, sqlite3.connect(copied) as target:
+            source.backup(target)
+        self.db = copied
         self.server = Server(self.db, device=True)
         api = self.server.call
         self.assertEqual(api('GET', '/api/state'), before)
@@ -149,6 +153,50 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT * FROM decisions').fetchall(), decisions)
         self.restart(device=True)
         self.assertEqual(self.server.call('GET', '/api/state'), before)
+
+    def test_fresh_schema_and_v2_restart_do_not_rewrite_payload(self):
+        self.server.call('POST', '/api/onboarding', ONBOARD)
+        self.server.close()
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+            tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+            self.assertEqual(tables, [('app_state',), ('decisions',), ('processed_requests',)])
+            for table, key in [('app_state', 'id'), ('decisions', 'request_id'), ('processed_requests', 'request_id')]:
+                self.assertEqual([row[1] for row in db.execute(f'PRAGMA table_info({table})') if row[5]], [key])
+            payload = db.execute('SELECT payload FROM app_state').fetchone()[0]
+            db.execute("CREATE TRIGGER no_rewrite BEFORE UPDATE ON app_state BEGIN SELECT RAISE(FAIL, 'unexpected rewrite'); END")
+        for _ in range(2):
+            self.server = Server(self.db)
+            self.server.close()
+            with sqlite3.connect(self.db) as db:
+                self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+
+    def test_v1_copy_late_schema_failure_rolls_back_upgrade(self):
+        self.server.call('POST', '/api/onboarding', ONBOARD)
+        self.server.close()
+        # SQLite backup makes an isolated representative copy; no live DB is edited.
+        copied = self.db.with_name('legacy-copy.sqlite3')
+        with sqlite3.connect(self.db) as source, sqlite3.connect(copied) as db:
+            source.backup(db)
+            legacy = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            del legacy['finance']
+            payload = json.dumps(legacy)
+            db.execute('UPDATE app_state SET payload=?', (payload,))
+            db.execute('PRAGMA user_version=1')
+            # All expected columns exist, but request IDs would no longer be unique.
+            db.execute('ALTER TABLE processed_requests RENAME TO old_requests')
+            db.execute('CREATE TABLE processed_requests (request_id TEXT, endpoint TEXT NOT NULL, payload TEXT NOT NULL)')
+            db.execute('DROP TABLE old_requests')
+            schema = db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall()
+        result = subprocess.run([BINARY], env={**os.environ, 'DB_PATH': str(copied)}, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'primary key', result.stderr)
+        with sqlite3.connect(copied) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+            self.assertEqual(db.execute('SELECT type,name,sql FROM sqlite_master ORDER BY name').fetchall(), schema)
+        # Original DB still starts normally.
+        self.server = Server(self.db)
 
     def test_v1_migration_failure_rolls_back_schema_payload_and_history(self):
         api = self.server.call
@@ -186,6 +234,116 @@ class HttpTests(unittest.TestCase):
         with sqlite3.connect(self.db) as db:
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 999)
             self.assertEqual(db.execute('SELECT payload FROM app_state').fetchone()[0], payload)
+
+    def storage_snapshot(self):
+        with sqlite3.connect(self.db) as db:
+            return (db.execute('SELECT * FROM app_state').fetchall(),
+                    db.execute('SELECT * FROM processed_requests ORDER BY request_id').fetchall())
+
+    def test_budget_transaction_acceptance_and_restart(self):
+        api = self.server.call
+        before = api('POST', '/api/onboarding', ONBOARD)
+        empty = api('GET', '/api/budgets?month=2026-11')
+        self.assertIsNone(api('GET', '/api/reports/today')['underDailyLimit'])
+        self.assertEqual(set(empty), {'month', 'monthlyLimit', 'dailyLimit', 'spentThisMonth',
+                                      'spentToday', 'remainingThisMonth', 'categories'})
+        for key in ['monthlyLimit', 'dailyLimit', 'remainingThisMonth']:
+            self.assertIsNone(empty[key])
+        self.assertTrue(all(c['limit'] is None and c['spent'] == 0 for c in empty['categories']))
+        self.assertEqual(api('GET', '/api/transactions?month=2026-11'), {'transactions': []})
+        budget = {'month': '2026-11', 'monthlyLimit': 500, 'dailyLimit': 25,
+                  'categoryLimits': {'food': 100}}
+        api('PUT', '/api/budgets', budget)
+        purchase = {'requestId': request_id(), 'name': 'Lunch', 'amount': 18,
+                    'category': 'food', 'occurredAt': '2026-11-19T12:00:00-05:00'}
+        result = api('POST', '/api/transactions', purchase)
+        self.assertEqual(result['budget']['spentThisMonth'], 18)
+        self.assertEqual(result['budget']['remainingThisMonth'], 482)
+        food = next(c for c in result['budget']['categories'] if c['id'] == 'food')
+        self.assertEqual((food['spent'], food['limit']), (18, 100))
+        self.assertEqual(result['transaction'], {'id': 'txn-' + purchase['requestId'], 'name': 'Lunch',
+            'amount': 18, 'category': 'food', 'occurredAt': purchase['occurredAt'],
+            'planned': False, 'source': 'manual', 'reflection': None})
+        saved = self.storage_snapshot()
+        self.assertEqual(api('POST', '/api/transactions', purchase), result)
+        api('POST', '/api/transactions', {**purchase, 'amount': 19}, 409)
+        self.assertEqual(self.storage_snapshot(), saved)
+        state = api('GET', '/api/state')
+        for key in ['goal', 'wallet', 'letter', 'pet', 'forest']:
+            self.assertEqual(state[key], before[key])
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/budgets?month=2026-11'), result['budget'])
+        self.assertEqual(api('GET', '/api/transactions?month=2026-11'), {'transactions': [result['transaction']]})
+        self.assertEqual(api('POST', '/api/transactions', purchase), result)
+        with sqlite3.connect(self.db) as db:
+            finance = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])['finance']
+            self.assertEqual(finance['transactions'][0]['amountCents'], 1800)
+            self.assertEqual(finance['budgets']['2026-11'],
+                             {'monthlyCents': 50000, 'dailyCents': 2500, 'categoryCents': {'food': 10000}})
+
+    def test_budget_transaction_invalid_requests_leave_storage_unchanged(self):
+        api = self.server.call
+        # Query validation is deterministic even before onboarding.
+        for route in ['/api/budgets', '/api/transactions']:
+            api('GET', route + '?month=2026-13', status=400)
+            api('GET', route + '?month=2026-11', status=404)
+        api('POST', '/api/onboarding', ONBOARD)
+        purchase = {'requestId': request_id(), 'name': 'Lunch', 'amount': 18,
+                    'category': 'food', 'occurredAt': '2026-11-19T12:00:00Z'}
+        budget = {'month': '2026-11', 'monthlyLimit': 500, 'dailyLimit': 25}
+        before = self.storage_snapshot()
+        for amount in [-1, 0, .001, 18.123, '18', None, True, 1000000001]:
+            api('POST', '/api/transactions', {**purchase, 'amount': amount}, 400)
+            for field in ['monthlyLimit', 'dailyLimit']:
+                api('PUT', '/api/budgets', {**budget, field: amount}, 400)
+            api('PUT', '/api/budgets', {**budget, 'categoryLimits': {'food': amount}}, 400)
+        for changed in [{'category': 'unknown'}, {'occurredAt': '2026-02-30T12:00:00Z'},
+                        {'occurredAt': '2026-11-19T12:00:00'}, {'occurredAt': '2026-11-19T24:00:00Z'},
+                        {'occurredAt': '2026-11-19T12:00:00+24:00'}, {'occurredAt': '2099-01-01T00:00:00Z'},
+                        {'source': 'demo'}, {'spentThisMonth': 1}, {'name': '   '}, {'requestId': 'bad'}]:
+            api('POST', '/api/transactions', {**purchase, **changed}, 400)
+        for changed in [{'month': '2026-13'}, {'month': 202611}, {'month': '2026-1'},
+                        {'categoryLimits': {'unknown': 1}}, {'categoryLimits': []}, {'spentThisMonth': 0}]:
+            api('PUT', '/api/budgets', {**budget, **changed}, 400)
+        for route in ['/api/budgets', '/api/transactions']:
+            for query in ['', '?month=2026-13', '?month=2026-11&month=2026-10', '?month=2026-11&extra=1']:
+                api('GET', route + query, status=400)
+        for method, route, body in [('PUT', '/api/budgets', budget), ('POST', '/api/transactions', purchase)]:
+            api(method, route + '?month=2026-10', body, 400)
+            for malformed in [{}, [], None]:
+                api(method, route, malformed, 400)
+            for token in ['NaN', 'Infinity', '1e999']:
+                field = 'amount' if method == 'POST' else 'monthlyLimit'
+                raw = json.dumps(body).replace(f'"{field}": {body[field]}', f'"{field}": {token}').encode()
+                api(method, route, status=400, raw=raw)
+            api(method, route, status=400, raw=b'{')
+        self.assertEqual(self.storage_snapshot(), before)
+        # The ID used throughout the failed submissions is still available.
+        api('POST', '/api/transactions', purchase)
+        self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
+    def test_transaction_month_boundaries_use_toronto(self):
+        api = self.server.call
+        before = api('POST', '/api/onboarding', ONBOARD)
+        # Completed historical month boundaries in Toronto: EDT vs EST.
+        cases = [('2026-11-01T03:59:59.999Z', '2026-10'),
+                 ('2026-11-01T04:00:00Z', '2026-11'),
+                 ('2026-11-01T00:00:00-04:00', '2026-11'),
+                 ('2026-03-01T04:59:59.999Z', '2026-02'),
+                 ('2026-03-01T05:00:00Z', '2026-03')]
+        expected = {}
+        for timestamp, month in cases:
+            result = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Boundary',
+                         'amount': .01, 'category': 'other', 'occurredAt': timestamp})
+            self.assertEqual(result['budget']['month'], month)
+            expected.setdefault(month, []).append(result['transaction'])
+        for month, rows in expected.items():
+            self.assertEqual(api('GET', '/api/transactions?month=' + month), {'transactions': rows})
+            self.assertEqual(api('GET', '/api/budgets?month=' + month)['spentThisMonth'], len(rows) / 100)
+        state = api('GET', '/api/state')
+        for key in ['goal', 'wallet', 'letter']:
+            self.assertEqual(state[key], before[key])
 
     def test_preferences_budgets_transactions_and_retry_conflicts(self):
         api = self.server.call
@@ -237,6 +395,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('GET', '/api/state')['preferences'], {'voice': 'calm'})
         self.assertEqual(api('POST', '/api/transactions', transaction)['transaction'], results[0]['transaction'])
         self.assertEqual(len(api('GET', '/api/transactions?month=2026-11')['transactions']), 1)
+
+    def test_insight_gets_leave_persisted_payload_and_request_ids_unchanged(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        before = self.storage_snapshot()
+        for _ in range(3):
+            self.assertEqual(api('GET', '/api/insights'), {'insights': []})
+        api('GET', '/api/insights?unexpected=1', status=400)
+        self.assertEqual(self.storage_snapshot(), before)
 
     def test_insights_and_reflections_are_observed_reward_free_and_persistent(self):
         self.restart(device=True)
@@ -336,7 +503,10 @@ class HttpTests(unittest.TestCase):
             api('POST', '/api/transactions', {'requestId': request_id(), 'name': f'Purchase {i}', 'amount': i + 1,
                 'category': category, 'occurredAt': (base + timedelta(minutes=30*i)).isoformat(timespec='milliseconds')})
         before = api('GET', '/api/state')
+        persisted = self.storage_snapshot()
         insights = api('GET', '/api/insights')['insights']
+        self.assertEqual(api('GET', '/api/insights')['insights'], insights)
+        self.assertEqual(self.storage_snapshot(), persisted)
         self.assertEqual(len(insights), 1)
         self.assertEqual(insights[0]['kind'], 'frequency')
         self.assertEqual(insights[0]['source'], 'manual')
@@ -344,6 +514,57 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('GET', '/api/state'), before)
         self.restart()
         self.assertEqual(self.server.call('GET', '/api/insights')['insights'], insights)
+
+    def test_reflection_validation_atomicity_sources_and_restart(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        manual = api('POST', '/api/transactions', {'requestId': request_id(), 'name': 'Book',
+                     'amount': 12, 'category': 'shopping', 'occurredAt': '2026-01-01T12:00:00Z'})['transaction']
+        self.seed_forest()
+        due = api('GET', '/api/reflections/due')['transactions']
+        demo = next(t for t in due if t['source'] == 'demo')
+        before_state = api('GET', '/api/state')
+        before = self.storage_snapshot()
+        review = {'requestId': request_id(), 'transactionId': manual['id'], 'verdict': 'not_worth_it'}
+        for changed in [{'transactionId': 'missing'}, {'transactionId': ''}, {'verdict': 'regret'},
+                        {'verdict': 'invalid'}, {'verdict': None}, {'requestId': 'bad'}, {'extra': True}]:
+            api('POST', '/api/reflections', {**review, **changed}, 404 if changed.get('transactionId') == 'missing' else 400)
+        for field in ['requestId', 'transactionId', 'verdict']:
+            api('POST', '/api/reflections', {k: v for k, v in review.items() if k != field}, 400)
+        api('POST', '/api/reflections?extra=1', review, 400)
+        api('GET', '/api/reflections/due?extra=1', status=400)
+        self.assertEqual(self.storage_snapshot(), before)
+        self.assertEqual(api('GET', '/api/reflections/due')['transactions'], due)
+        self.assertEqual(self.storage_snapshot(), before)
+        # Failed requests did not reserve review's UUID.
+        results = []
+        for transaction in [manual, demo]:
+            body = {**review, 'transactionId': transaction['id']}
+            if transaction['source'] == 'demo':
+                body['requestId'] = request_id()
+            result = api('POST', '/api/reflections', body)
+            self.assertEqual(result['transaction']['source'], transaction['source'])
+            self.assertEqual(result['transaction']['reflection']['verdict'], 'not_worth_it')
+            self.assertEqual(result['state'], before_state)
+            saved = self.storage_snapshot()
+            self.assertEqual(api('POST', '/api/reflections', body), result)
+            api('POST', '/api/reflections', {**body, 'verdict': 'unsure'}, 409)
+            conflict_id = request_id()
+            api('POST', '/api/reflections', {**body, 'requestId': conflict_id, 'verdict': 'unsure'}, 409)
+            self.assertEqual(self.storage_snapshot(), saved)
+            # Same-verdict, fresh-ID replay is a successful no-op under the contract.
+            self.assertEqual(api('POST', '/api/reflections', {**body, 'requestId': conflict_id}), result)
+            results.append((body, result['transaction']))
+        remaining = api('GET', '/api/reflections/due')['transactions']
+        self.assertFalse({manual['id'], demo['id']} & {t['id'] for t in remaining})
+        self.restart()
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), before_state)
+        for body, transaction in results:
+            self.assertEqual(api('POST', '/api/reflections', body)['transaction'], transaction)
+        manual_rows = api('GET', '/api/transactions?month=2026-01')['transactions']
+        self.assertIn(results[0][1], manual_rows)
+        self.assertEqual(api('GET', '/api/reflections/due')['transactions'], remaining)
 
     def test_reflections_require_48_hours_and_preserve_existing_reviews(self):
         api = self.server.call
@@ -365,6 +586,96 @@ class HttpTests(unittest.TestCase):
         api('POST', '/api/reflections', {**review, 'requestId': request_id(), 'verdict': 'unsure'}, 409)
         self.restart()
         self.assertEqual(self.server.call('POST', '/api/reflections', review)['transaction']['reflection'], old_review)
+
+    def test_lesson_catalogue_privacy_validation_and_level_thresholds(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        rules = Path(__file__).resolve().parents[3] / 'packages/contracts/fixtures/rules.json'
+        catalogue = json.loads(rules.read_text())['lessons']
+        before = self.storage_snapshot()
+        public = api('GET', '/api/lessons')['lessons']
+        self.assertEqual(self.storage_snapshot(), before)
+        self.assertEqual(len(public), 2)
+        for lesson, definition in zip(public, catalogue):
+            self.assertEqual(set(lesson), {'id', 'title', 'body', 'question', 'options', 'completed', 'availableReward'})
+            self.assertEqual(lesson['options'], definition['options'])
+            self.assertFalse(lesson['completed'])
+            self.assertEqual(lesson['availableReward'], {'coins': 5, 'xp': 10})
+            self.assertTrue(all(set(option) == {'id', 'label'} for option in lesson['options']))
+        first = catalogue[0]
+        answer = {'requestId': request_id(), 'lessonId': first['id'], 'selectedOptionId': first['correctOptionId']}
+        for changed, status in [({'lessonId': 'missing'}, 404), ({'selectedOptionId': 'missing'}, 400),
+                                ({'lessonId': ''}, 400), ({'selectedOptionId': None}, 400),
+                                ({'requestId': 'bad'}, 400), ({'correct': True}, 400)]:
+            api('POST', '/api/lessons/answer', {**answer, **changed}, status)
+        for field in answer:
+            api('POST', '/api/lessons/answer', {k: v for k, v in answer.items() if k != field}, 400)
+        api('GET', '/api/lessons?extra=1', status=400)
+        api('POST', '/api/lessons/answer?extra=1', answer, 400)
+        self.assertEqual(self.storage_snapshot(), before)
+        before_wrong = api('GET', '/api/state')
+        wrong_option = next(o['id'] for o in first['options'] if o['id'] != first['correctOptionId'])
+        wrong = api('POST', '/api/lessons/answer', {**answer, 'selectedOptionId': wrong_option})
+        self.assertEqual(set(wrong), {'correct', 'feedback', 'reward', 'state'})
+        self.assertFalse(wrong['correct'])
+        self.assertTrue(wrong['feedback'])
+        self.assertEqual(wrong['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(wrong['state'], before_wrong)
+        self.assertFalse(api('GET', '/api/lessons')['lessons'][0]['completed'])
+        # Wrong answers are successful submissions, so a corrected answer needs a fresh ID.
+        api('POST', '/api/lessons/answer', answer, 409)
+        for definition, starting_xp, level in zip(catalogue, [90, 240], [2, 3]):
+            if starting_xp == 90:
+                for _ in range(3):
+                    api('POST', '/api/savings', {'requestId': request_id(), 'amount': 1})
+            else:
+                for _ in range(7):
+                    api('POST', '/api/decisions', {'requestId': request_id(), 'itemName': 'Optional purchase',
+                                                 'amount': 1, 'decision': 'skip'})
+            baseline = api('GET', '/api/state')
+            self.assertEqual(baseline['wallet']['xp'], starting_xp)
+            body = {'requestId': request_id(), 'lessonId': definition['id'], 'selectedOptionId': definition['correctOptionId']}
+            result = api('POST', '/api/lessons/answer', body)
+            self.assertTrue(result['correct'])
+            self.assertEqual(result['reward'], {'coins': 5, 'xp': 10})
+            self.assertEqual(result['state']['wallet']['xp'], starting_xp + 10)
+            self.assertEqual(result['state']['wallet']['level'], level)
+            self.assertEqual(result['state']['goal'], baseline['goal'])
+            self.assertEqual(result['state']['letter'], baseline['letter'])
+            self.assertTrue(result['state']['quest']['available'])
+            if level == 3:
+                self.assertIn('expandedProjection', result['state']['unlockedFeatures'])
+
+    def test_lesson_concurrent_ids_reward_each_lesson_once_after_restart(self):
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        rules = Path(__file__).resolve().parents[3] / 'packages/contracts/fixtures/rules.json'
+        catalogue = json.loads(rules.read_text())['lessons']
+        bodies = []
+        for lesson in catalogue:
+            body = {'requestId': request_id(), 'lessonId': lesson['id'], 'selectedOptionId': lesson['correctOptionId']}
+            # Race both the same successful ID and different IDs for this lesson.
+            requests = [body] * 4 + [{**body, 'requestId': request_id()} for _ in range(4)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda payload: api('POST', '/api/lessons/answer', payload), requests))
+            self.assertTrue(all(result['correct'] for result in results))
+            self.assertEqual(sum(result['reward']['coins'] for result in results), 5)
+            self.assertEqual(sum(result['reward']['xp'] for result in results), 10)
+            bodies.append(body)
+        state = api('GET', '/api/state')
+        self.assertEqual((state['wallet']['coins'], state['wallet']['xp']), (10, 20))
+        with sqlite3.connect(self.db) as db:
+            stored = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+            self.assertEqual(stored['finance']['completedLessons'], [lesson['id'] for lesson in catalogue])
+        self.restart()
+        api = self.server.call
+        for body in bodies:
+            for payload in [body, {**body, 'requestId': request_id()}]:
+                result = api('POST', '/api/lessons/answer', payload)
+                self.assertEqual(result['reward'], {'coins': 0, 'xp': 0})
+                self.assertEqual(result['state'], state)
+        self.assertTrue(all(lesson['completed'] and lesson['availableReward'] == {'coins': 0, 'xp': 0}
+                            for lesson in api('GET', '/api/lessons')['lessons']))
 
     def test_lessons_reward_once_validate_options_and_rollback_reactions(self):
         self.restart(device=True)
@@ -406,6 +717,63 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.server.call('POST', '/api/lessons/answer', answer)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/device/state')['reactionSeq'], device['reactionSeq'] + 1)
 
+    def test_check_in_first_completion_race_privacy_and_restart(self):
+        self.restart(device=True)
+        api = self.server.call
+        api('POST', '/api/onboarding', ONBOARD)
+        api('POST', '/api/demo/seed', {'xp': 100, 'coins': 20})
+        feed = {'requestId': request_id(), 'petId': 'mochi-01'}
+        api('POST', '/api/feed', feed)
+        device = api('GET', '/api/device/state')
+        self.assertEqual(set(device), {'petId', 'mood', 'hunger', 'reactionSeq', 'reactionType'})
+        self.assertEqual(device['reactionType'], 'feed')
+        before = api('GET', '/api/state')
+        saved = self.storage_snapshot()
+        for _ in range(3):
+            report = api('GET', '/api/reports/today')
+            self.assertFalse(report['completedToday'])
+            self.assertEqual(api('GET', '/api/device/state'), device)
+        check_in = {'requestId': request_id()}
+        api('POST', '/api/check-ins?extra=1', check_in, 400)
+        api('POST', '/api/quests/complete?extra=1', {**check_in, 'questId': 'daily-check-in'}, 400)
+        for invalid in [{}, {'requestId': 'bad'}, {**check_in, 'extra': True}]:
+            api('POST', '/api/check-ins', invalid, 400)
+        self.assertEqual(self.storage_snapshot(), saved)
+        # Race first completion using fresh IDs through both routes and shared-ID retries.
+        def complete(i):
+            body = check_in if i < 4 else {'requestId': request_id()}
+            if i % 2:
+                return api('POST', '/api/check-ins', body)['state']
+            return api('POST', '/api/quests/complete', {**body, 'questId': 'daily-check-in'})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            states = list(pool.map(complete, range(12)))
+        self.assertTrue(all(s['wallet']['coins'] == 10 and s['wallet']['xp'] == 120 for s in states))
+        final = api('GET', '/api/state')
+        for key in ['goal', 'letter', 'pet', 'forest']:
+            self.assertEqual(final[key], before[key])
+        report = api('GET', '/api/reports/today')
+        self.assertTrue(report['completedToday'])
+        self.assertEqual(report['streakDays'], 1)
+        self.assertEqual(report['availableReward'], {'coins': 0, 'xp': 0})
+        # No unsupported event is emitted: frozen hardware mapping is still pending.
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(api('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/check-ins', {'requestId': request_id()})['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/quests/complete', {'requestId': request_id(), 'questId': 'daily-check-in'}), final)
+        self.restart(device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), final)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertTrue(api('GET', '/api/reports/today')['completedToday'])
+        self.assertEqual(api('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
+        self.assertEqual(api('POST', '/api/feed', feed), final)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.restart(device=False)
+        api = self.server.call
+        api('GET', '/api/device/state', status=404)
+        api('POST', '/api/device/gesture', {'gesture': 'feed'}, 404)
+        self.assertEqual(api('GET', '/api/state'), final)
+
     def test_daily_report_is_read_only_and_check_in_aliases_share_one_reward(self):
         self.restart(device=True)
         api = self.server.call
@@ -423,6 +791,7 @@ class HttpTests(unittest.TestCase):
             'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')})
         before = api('GET', '/api/state')
         device = api('GET', '/api/device/state')
+        persisted = self.storage_snapshot()
         for _ in range(3):
             report = api('GET', '/api/reports/today')
             self.assertTrue(report['underDailyLimit'])
@@ -431,6 +800,9 @@ class HttpTests(unittest.TestCase):
             self.assertFalse(report['completedToday'])
         self.assertEqual(api('GET', '/api/state'), before)
         self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(self.storage_snapshot(), persisted)
+        api('GET', '/api/reports/today?extra=1', status=400)
+        self.assertEqual(self.storage_snapshot(), persisted)
         with sqlite3.connect(self.db) as db:
             db.execute("CREATE TRIGGER fail_checkin BEFORE INSERT ON processed_requests BEGIN SELECT RAISE(FAIL, 'write failure'); END")
         api('POST', '/api/check-ins', check_in, 500)
@@ -451,6 +823,59 @@ class HttpTests(unittest.TestCase):
         self.restart(device=True)
         self.assertEqual(self.server.call('POST', '/api/check-ins', check_in)['reward'], {'coins': 0, 'xp': 0})
         self.assertEqual(self.server.call('GET', '/api/reports/today')['availableReward'], {'coins': 0, 'xp': 0})
+
+    def test_preference_voice_roundtrips_name_boundaries_and_storage_isolation(self):
+        self.restart(device=True)
+        api = self.server.call
+        original = api('POST', '/api/onboarding', ONBOARD)
+        self.assertEqual(original['preferences'], {'voice': 'cute'})
+        self.assertEqual(original['pet']['id'], 'mochi-01')
+        api('POST', '/api/decisions', {'requestId': request_id(), 'itemName': 'Optional purchase', 'amount': 60, 'decision': 'skip'})
+        api('POST', '/api/savings', {'requestId': request_id(), 'amount': 50})
+        device = api('GET', '/api/device/state')
+        initial, history = self.storage_snapshot()
+        expected = json.loads(initial[0][1])
+        # Round-trip every frozen voice and restart after each successful save.
+        for voice in ['cute', 'calm', 'cute']:
+            result = api('PUT', '/api/preferences', {'voice': voice})
+            expected['finance']['preferences']['voice'] = voice
+            rows, requests = self.storage_snapshot()
+            self.assertEqual(json.loads(rows[0][1]), expected)
+            self.assertEqual(requests, history)
+            self.assertEqual(result['pet']['id'], 'mochi-01')
+            self.assertEqual(result['pet']['name'], ONBOARD['petName'])
+            self.assertEqual(api('GET', '/api/device/state'), device)
+            self.restart(device=True)
+            api = self.server.call
+            self.assertEqual(api('GET', '/api/state'), result)
+        # The shared limit is 200 UTF-16 units; supplementary characters count twice.
+        for name, saved_name in [('x'*200, 'x'*200), ('🐿'*100, '🐿'*100), (' \u00a0Clover\u00a0 ', 'Clover')]:
+            result = api('PUT', '/api/preferences', {'petName': name})
+            expected['account']['petName'] = saved_name
+            self.assertEqual(result['pet']['name'], saved_name)
+            self.assertEqual(result['preferences'], {'voice': 'cute'})
+            rows, requests = self.storage_snapshot()
+            self.assertEqual(json.loads(rows[0][1]), expected)
+            self.assertEqual(requests, history)
+        saved = self.storage_snapshot()
+        for body in [{}, [], None, {'voice': 'energetic', 'petName': 'Should not save'},
+                     {'voice': None}, {'voice': True}, {'petName': ''}, {'petName': '\u00a0 \n'},
+                     {'petName': 'x'*201, 'voice': 'calm'}, {'petName': '🐿'*101},
+                     {'petName': 42}, {'voice': 'calm', 'requestId': request_id()}]:
+            api('PUT', '/api/preferences', body, 400)
+            self.assertEqual(self.storage_snapshot(), saved)
+        api('PUT', '/api/preferences?extra=1', {'voice': 'calm'}, 400)
+        api('PUT', '/api/preferences', status=400, raw=b'{')
+        api('PUT', '/api/preferences', {'voice': 'calm'}, 400, content_type='text/plain')
+        self.assertEqual(self.storage_snapshot(), saved)
+        self.restart(device=True)
+        api = self.server.call
+        self.assertEqual(api('GET', '/api/state'), result)
+        self.assertEqual(api('GET', '/api/device/state'), device)
+        self.assertEqual(set(device), {'petId', 'mood', 'hunger', 'reactionSeq', 'reactionType'})
+        self.assertNotIn('voice', device)  # Strict legacy poller requires the original five-key payload.
+        self.restart(device=False)
+        self.server.call('GET', '/api/device/state', status=404)
 
     def test_name_and_voice_preferences_are_independent_atomic_and_persistent(self):
         self.restart(device=True)
@@ -490,34 +915,60 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(legacy['pet']['name'], 'Maple')
         self.assertEqual(legacy['letter'], before['letter'])
 
-    def test_forest_scenario_and_replays_persist_with_existing_device_contract(self):
+    def _run_forest_restart_scenario(self, migrate_v1=False):
         self.restart(device=True)
         api = self.server.call
         api('POST', '/api/onboarding', ONBOARD)
         api('POST', '/api/demo/seed', {'xp': 100})  # Existing level-2 user; V1 gate is preserved.
+        if migrate_v1:
+            self.server.close()
+            with sqlite3.connect(self.db) as db:
+                state = json.loads(db.execute('SELECT payload FROM app_state').fetchone()[0])
+                del state['finance']
+                db.execute('UPDATE app_state SET payload=?', (json.dumps(state),))
+                db.execute('PRAGMA user_version=1')
         self.restart(device=True)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
         api = self.server.call
         before = api('GET', '/api/state')
         report = api('GET', '/api/reports/today')
         month = report['date'][:7]
-        api('PUT', '/api/preferences', {'voice': 'calm'})
+        api('PUT', '/api/preferences', {'voice': 'calm', 'petName': 'Clover'})
         api('PUT', '/api/budgets', {'month': month, 'monthlyLimit': 500, 'dailyLimit': 25})
         purchase = {'requestId': request_id(), 'name': 'Takeout', 'amount': 18, 'category': 'food',
                     'occurredAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds')}
-        result = api('POST', '/api/transactions', purchase)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            purchases = list(pool.map(lambda _: api('POST', '/api/transactions', purchase), range(6)))
+        result = purchases[0]
+        self.assertTrue(all(p == result for p in purchases))
+        self.assertEqual(len(api('GET', '/api/transactions?month=' + month)['transactions']), 1)
         self.assertEqual(result['budget']['spentThisMonth'], 18)
+        self.assertEqual(result['budget']['remainingThisMonth'], 482)
         self.assertEqual(api('GET', '/api/reports/today')['spentToday'], 18)
         api('POST', '/api/transactions', purchase)
         self.assertEqual(api('GET', '/api/state')['wallet'], before['wallet'])
         self.assertEqual(api('GET', '/api/state')['goal'], before['goal'])
         self.assertEqual(self.seed_forest(), {'seededTransactions': 6})
         insights = api('GET', '/api/insights')['insights']
+        self.assertEqual(len(insights), 2)
+        cluster = next(i for i in insights if i['id'].startswith('cluster-'))
+        self.assertEqual(cluster['source'], 'demo')
+        self.assertEqual(cluster['evidence'], {'count': 3, 'windowDays': 4/24, 'totalAmount': 35})
         frequency = next(i for i in insights if i['id'].startswith('frequency-'))
         self.assertEqual(frequency['source'], 'demo')
         self.assertEqual(frequency['evidence'], {'count': 3, 'windowDays': 7, 'totalAmount': 54})
         due = api('GET', '/api/reflections/due')['transactions']
         review = {'requestId': request_id(), 'transactionId': due[0]['id'], 'verdict': 'worth_it'}
-        reviewed = api('POST', '/api/reflections', review)['transaction']
+        before_review = api('GET', '/api/state')
+        reviews = [review] * 3 + [{**review, 'requestId': request_id()} for _ in range(3)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            responses = list(pool.map(lambda body: api('POST', '/api/reflections', body), reviews))
+        reviewed = responses[0]['transaction']
+        self.assertTrue(all(r['transaction'] == reviewed and r['state'] == before_review for r in responses))
+        rejected = self.storage_snapshot()
+        api('POST', '/api/reflections', {**review, 'requestId': request_id(), 'verdict': 'unsure'}, 409)
+        self.assertEqual(self.storage_snapshot(), rejected)
         self.assertEqual(api('POST', '/api/reflections', review)['transaction'], reviewed)
         # Race fresh IDs for each of the two lessons: exactly one award per lesson.
         lesson_ids = [lesson['id'] for lesson in api('GET', '/api/lessons')['lessons']]
@@ -546,7 +997,11 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(saved['forest'], {'treeStage': 'sapling', 'growthPercent': 25})
         self.assertEqual(saved['letter'], {**ONBOARD['letter'], 'revealedSections': 1})
         feed = {'requestId': request_id(), 'petId': 'mochi-01'}
-        final = api('POST', '/api/feed', feed)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            feeds = list(pool.map(lambda _: api('POST', '/api/feed', feed), range(6)))
+        final = feeds[0]
+        self.assertTrue(all(state == final for state in feeds))
+        self.assertEqual(final['wallet']['coins'], saved['wallet']['coins'] - 20)
         device = api('GET', '/api/device/state')
         self.assertEqual(device['reactionSeq'], device_before['reactionSeq'] + 1)
         self.assertEqual(device['reactionType'], 'feed')
@@ -566,6 +1021,8 @@ class HttpTests(unittest.TestCase):
         self.restart(device=True)
         api = self.server.call
         self.assertEqual(api('GET', '/api/state'), final)
+        self.assertEqual(final['pet']['name'], 'Clover')
+        self.assertEqual(final['preferences'], {'voice': 'calm'})
         self.assertEqual(api('GET', '/api/reports/today'), final_report)
         self.assertEqual(api('GET', '/api/insights')['insights'], insights)
         self.assertEqual(api('POST', '/api/transactions', purchase)['transaction']['id'], result['transaction']['id'])
@@ -578,6 +1035,21 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(api('POST', '/api/savings', savings), final)
         self.assertEqual(api('GET', '/api/device/state'), device)
         self.assertEqual(self.seed_forest(), {'seededTransactions': 0})
+        self.restart(device=False)
+        api = self.server.call
+        readonly = self.storage_snapshot()
+        for _ in range(3):
+            self.assertEqual(api('GET', '/api/reports/today'), final_report)
+            self.assertEqual(api('GET', '/api/state'), final)
+            api('GET', '/api/device/state', status=404)
+        api('POST', '/api/device/gesture', {'gesture': 'feed'}, 404)
+        self.assertEqual(self.storage_snapshot(), readonly)
+
+    def test_forest_scenario_and_replays_persist_with_existing_device_contract(self):
+        self._run_forest_restart_scenario()
+
+    def test_migrated_v1_full_forest_concurrency_and_restart(self):
+        self._run_forest_restart_scenario(migrate_v1=True)
 
     def test_over_budget_spending_does_not_shrink_existing_tree_or_rewards(self):
         api = self.server.call

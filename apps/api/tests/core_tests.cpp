@@ -1,6 +1,8 @@
 #include "database.hpp"
 #include "game_logic.hpp"
 #include "engagement.hpp"
+#include "learning.hpp"
+#include "demo.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -158,15 +160,44 @@ void reflection_boundary() {
   apply_finance_action(state, Action::transaction, transaction, timestamp_millis("2026-11-21T12:00:00Z"));
   const Json reflection = {{"requestId", id(102)}, {"transactionId", "txn-" + id(101)}, {"verdict", "worth_it"}};
   const auto boundary = timestamp_millis("2026-11-22T12:00:00Z");
+  const auto unreviewed = state;
+  check(due_reflections(state, boundary - 60000).empty(), "47h59m purchase is not due");
+  check(state == unreviewed, "Due list is read-only");
   check(due_reflections(state, boundary - 86400000).empty(), "24 hours is not due in v2");
   check(due_reflections(state, boundary - 1).empty(), "Before reflection boundary");
   check(due_reflections(state, boundary).size() == 1, "Exact reflection boundary");
   error([&] { apply_reflection(state, reflection, boundary - 1); }, "REFLECTION_NOT_DUE");
+  check(state == unreviewed, "Early reflection error leaves state unchanged");
+  auto missing = reflection; missing["transactionId"] = "missing";
+  error([&] { apply_reflection(state, missing, boundary); }, "NOT_FOUND");
+  check(state == unreviewed, "Missing transaction error leaves state unchanged");
   apply_reflection(state, reflection, boundary);
+  auto expected = unreviewed;
+  expected["finance"]["transactions"][0]["reflection"] =
+    {{"verdict", "worth_it"}, {"reflectedAt", "2026-11-22T12:00:00.000Z"}};
+  check(state == expected, "Only attached reflection changes; account, cents and source are preserved");
+  auto conflicting = reflection; conflicting["verdict"] = "unsure";
+  error([&] { apply_reflection(state, conflicting, boundary); }, "REFLECTION_EXISTS");
+  check(state == expected, "Conflicting verdict leaves original judgement unchanged");
   check(due_reflections(state, boundary).empty() && state["account"]["xp"] == 0, "Reflection grants no reward");
   const auto completed = state["finance"]["transactions"][0]["reflection"];
   apply_reflection(state, reflection, boundary - 86400000);
   check(state["finance"]["transactions"][0]["reflection"] == completed, "Existing v1 review stays stable under the v2 delay");
+  for (const auto* source : std::array{"manual", "demo"}) {
+    for (const auto* verdict : std::array{"worth_it", "unsure", "not_worth_it"}) {
+      auto fixture = unreviewed;
+      fixture["finance"]["transactions"][0]["source"] = source;
+      auto input = reflection; input["verdict"] = verdict;
+      input = validate_input(Action::reflection, input);
+      const auto original_account = fixture["account"];
+      apply_reflection(fixture, input, boundary);
+      const auto& saved = fixture["finance"]["transactions"][0];
+      check(saved["reflection"]["verdict"] == verdict && saved["source"] == source,
+            "All frozen verdicts preserve manual/demo source");
+      check(fixture["account"] == original_account && due_reflections(fixture, boundary).empty(),
+            "All verdicts remove due item without changing goals or wallet");
+    }
+  }
   check(timestamp_millis("2026-11-01T01:00:00+14:00") == timestamp_millis("2026-10-31T11:00:00Z"), "Offset instant");
   for (const auto& [saved, stage] : std::vector<std::pair<double, std::string>>{{49.99, "seedling"}, {50, "sapling"}, {100, "young"}, {150, "mature"}, {200, "thriving"}}) {
     apply_action(state, Action::seed, {{"confirmedSaved", saved}}, today);
@@ -206,11 +237,190 @@ void insight_windows() {
   check(spending_insights(state, now).empty(), "Older than seven days excluded");
 }
 
+
+void insight_acceptance() {
+  auto state = empty_state();
+  apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  auto& transactions = state["finance"]["transactions"];
+  const auto now = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto purchase = [](const std::string& id, const std::string& at, int cents,
+                           const std::string& name, const std::string& category,
+                           const std::string& source = "manual") {
+    return Json{{"id", id}, {"occurredAt", at}, {"amountCents", cents}, {"name", name},
+      {"category", category}, {"source", source}, {"planned", false}, {"reflection", nullptr}};
+  };
+  check(spending_insights(state, now).empty(), "Empty records produce no insight");
+  transactions.push_back(purchase("b", "2026-11-21T08:00:00Z", 2, "Book", "shopping"));
+  transactions.push_back(purchase("a", "2026-11-21T04:00:00-04:00", 1, "Game", "entertainment"));
+  check(spending_insights(state, now).empty(), "Two discretionary purchases do not qualify");
+  transactions.push_back(purchase("c", "2026-11-21T12:00:00Z", 3, "Shoes", "shopping"));
+  const auto cluster = spending_insights(state, now);
+  check(cluster.size() == 1 && cluster[0]["id"] == "cluster-manual-a-c", "Tied timestamps use ID order");
+  check(cluster[0]["evidence"] == Json{{"count", 3}, {"windowDays", 4.0/24.0}, {"totalAmount", .06}}, "Exact four-hour window totals cents");
+  const auto snapshot = state;
+  for (int i = 0; i < 3; ++i) check(spending_insights(state, now) == cluster, "Repeated reads have stable IDs and evidence");
+  check(state == snapshot, "Insight reads do not mutate stored state");
+  for (auto& t : transactions) t["occurredAt"] = "2026-11-21T12:00:00.001Z";
+  check(spending_insights(state, now).empty(), "Future discretionary transactions are excluded");
+  for (auto& t : transactions) t["occurredAt"] = "2026-11-14T11:59:59.999Z";
+  check(spending_insights(state, now).empty(), "Clusters older than the contract lookback are excluded");
+  transactions = snapshot["finance"]["transactions"];
+  transactions.push_back(purchase("d", "2026-11-21T09:00:00Z", 4, "Cinema", "entertainment"));
+  auto cards = spending_insights(state, now);
+  check(cards.size() == 1 && cards[0]["evidence"]["count"] == 4 && cards[0]["evidence"]["totalAmount"] == .10,
+        "Contained windows do not produce duplicate cards");
+  transactions[0]["occurredAt"] = "2026-11-21T07:59:59.999Z";
+  cards = discretionary_clusters(state, now);
+  check(cards.size() == 2 && cards[0]["id"] != cards[1]["id"], "Different overlapping maximal windows have distinct IDs");
+
+  transactions = Json::array();
+  for (int i = 0; i < 2; ++i)
+    transactions.push_back(purchase("takeout-" + std::to_string(i), "2026-11-14T12:00:00Z", 1801, "Takeout", "food"));
+  check(spending_insights(state, now).empty(), "Two takeouts do not qualify");
+  transactions.push_back(purchase("old", "2026-11-14T11:59:59.999Z", 9999, "Takeout", "food"));
+  transactions.push_back(purchase("future", "2026-11-21T12:00:00.001Z", 9999, "Takeout", "food"));
+  transactions.push_back(purchase("demo-only", "2026-11-21T11:00:00Z", 9999, "Takeout", "food", "demo"));
+  check(spending_insights(state, now).empty(), "Old, future and different-source entries cannot complete a group");
+  transactions.push_back(purchase("takeout-2", "2026-11-21T12:00:00Z", 1801, "Takeout", "food"));
+  cards = spending_insights(state, now);
+  check(cards.size() == 1 && cards[0]["id"] == "frequency-manual-takeout-0", "One deterministic takeout card");
+  check(cards[0]["source"] == "manual" && cards[0]["evidence"] == Json{{"count", 3}, {"windowDays", 7}, {"totalAmount", 54.03}},
+        "Inclusive seven-day boundary and exact manual evidence");
+  transactions.push_back(purchase("demo-2", "2026-11-21T10:00:00Z", 1, "Takeout", "food", "demo"));
+  transactions.push_back(purchase("demo-3", "2026-11-21T09:00:00Z", 2, "Takeout", "food", "demo"));
+  cards = spending_insights(state, now);
+  check(cards.size() == 2 && cards[1]["source"] == "demo" && cards[1]["evidence"]["totalAmount"] == 100.02,
+        "Demo frequency uses only demo evidence");
+  const auto final_snapshot = state;
+  check(spending_insights(state, now) == cards && state == final_snapshot, "Frequency reads are repeatable and read-only");
+  for (const auto& card : cards) {
+    check(card.size() == 7 && card["kind"] == "frequency" && !card["suggestion"].get<std::string>().empty(),
+          "Frozen insight shape and constructive suggestion");
+  }
+}
+
+
+void daily_report_calendar() {
+  auto state = empty_state();
+  apply_action(state, Action::onboard, validate_input(Action::onboard, onboarding), today);
+  const auto report_at = [&](const char* instant) {
+    const auto seconds = std::chrono::floor<std::chrono::seconds>(
+      std::chrono::milliseconds(timestamp_millis(instant))).count();
+    return daily_report(state, local_day(static_cast<std::time_t>(seconds)));
+  };
+  const auto empty = report_at("2026-12-01T04:59:59.999Z");
+  check(empty == Json{{"date", "2026-11-30"}, {"spentToday", 0}, {"dailyLimit", nullptr},
+    {"underDailyLimit", nullptr}, {"achievement", nullptr}, {"insight", "Your financial check-in is ready"},
+    {"completedToday", false}, {"streakDays", 0}, {"availableReward", {{"coins", 0}, {"xp", 0}}}},
+    "Empty level-one report has frozen shape, unknown target and no earned activity");
+  check(state["account"]["savedCents"] == 0 && state["account"]["lastQuestDate"].is_null(),
+        "Empty report creates neither savings nor check-in");
+  apply_action(state, Action::seed, {{"xp", 100}}, today);
+  for (const auto* month : {"2026-11", "2026-12", "2026-03"})
+    apply_finance_action(state, Action::budget, {{"month", month}, {"monthlyLimit", 500}, {"dailyLimit", 25}}, 0);
+  const auto add_purchase = [&](int n, const char* instant, double amount) {
+    auto input = validate_input(Action::transaction, {{"requestId", id(n)}, {"name", "Meal"},
+      {"amount", amount}, {"category", "food"}, {"occurredAt", instant}});
+    apply_finance_action(state, Action::transaction, input, timestamp_millis("2026-12-02T00:00:00Z"));
+  };
+  add_purchase(201, "2026-12-01T04:59:59.999Z", 18);
+  add_purchase(202, "2026-12-01T05:00:00Z", .29);
+  apply_action(state, Action::check_in, {{"requestId", id(203)}}, "2026-11-30", timestamp_millis("2026-11-30T12:00:00Z") / 1000);
+  const auto snapshot = state;
+  const auto before = report_at("2026-12-01T04:59:59.999Z");
+  check(before["date"] == "2026-11-30" && before["spentToday"] == 18 && before["underDailyLimit"] == true,
+        "18 dollars against 25 uses Toronto day before midnight");
+  check(before["completedToday"] == true && before["availableReward"] == Json{{"coins", 0}, {"xp", 0}},
+        "Report uses completed authoritative check-in");
+  const auto after = report_at("2026-12-01T05:00:00Z");
+  check(after["date"] == "2026-12-01" && after["spentToday"] == .29 && after["dailyLimit"] == 25,
+        "Midnight selects new month's budget and only its local-day spending");
+  check(after["completedToday"] == false && after["streakDays"] == 1 &&
+        after["availableReward"] == Json{{"coins", 10}, {"xp", 20}}, "Next-day reward remains merely available");
+  check(report_at("2026-12-02T05:00:00Z")["streakDays"] == 0, "Missed day projects expired streak");
+  for (int i = 0; i < 3; ++i) check(report_at("2026-12-01T05:00:00Z") == after, "Repeated fixed-time reports are deterministic");
+  check(state == snapshot, "Reports do not change rewards, reaction, streak or saved state");
+  const auto quest = app_state(state, "2026-12-01")["quest"];
+  check(after["completedToday"] == quest["completedToday"] && after["streakDays"] == quest["streakDays"],
+        "Report does not use a duplicate check-in counter");
+  add_purchase(204, "2026-12-01T12:00:00-05:00", 24.71);
+  check(report_at("2026-12-01T18:00:00Z")["underDailyLimit"] == true, "Exact daily limit is within target");
+  add_purchase(205, "2026-12-01T13:00:00-05:00", .01);
+  const auto over = report_at("2026-12-01T19:00:00Z");
+  check(over["spentToday"] == 25.01 && over["underDailyLimit"] == false && over["achievement"].is_null(),
+        "One cent over target produces no false achievement");
+  apply_finance_action(state, Action::budget, {{"month", "2026-12"}, {"monthlyLimit", 500}}, 0);
+  const auto untargeted = report_at("2026-12-01T19:00:00Z");
+  check(untargeted["spentToday"] == 25.01 && untargeted["dailyLimit"].is_null() &&
+        untargeted["underDailyLimit"].is_null() && untargeted["achievement"].is_null(),
+        "Recorded spending without a daily target makes no success/failure claim");
+  // Toronto's spring-forward day is 23 hours; both sides of the jump are March 8.
+  add_purchase(206, "2026-03-08T06:59:59.999Z", 1);
+  add_purchase(207, "2026-03-08T07:00:00Z", 2);
+  add_purchase(208, "2026-03-09T04:00:00Z", 4);
+  check(report_at("2026-03-08T07:00:00Z")["spentToday"] == 3, "DST jump stays in one calendar day");
+  check(report_at("2026-03-09T04:00:00Z")["spentToday"] == 4, "DST midnight excludes previous local day");
+}
+
+
+void demo_clock_reproducibility() {
+  Database db(":memory:");
+  run(db, Action::onboard, onboarding);
+  const auto start = timestamp_millis("2026-11-21T12:00:00Z");
+  const auto later = start + 8LL * 86400000;
+  auto manual = validate_input(Action::transaction, {{"requestId", id(301)}, {"name", "Manual book"},
+    {"amount", 9.29}, {"category", "shopping"}, {"occurredAt", "2026-11-20T12:00:00Z"}});
+  db.mutate(id(301), "/api/transactions", manual, [&](Json& state) {
+    apply_finance_action(state, Action::transaction, manual, start);
+  });
+  const auto initial = db.read();
+  check(seed_forest_demo(db, start) == 6, "Fresh demo creates six examples");
+  const auto fresh = db.read();
+  check(fresh["account"]["coins"] == initial["account"]["coins"] && fresh["account"]["xp"] == initial["account"]["xp"],
+        "Demo creates no reward");
+  const auto insights = spending_insights(fresh, start);
+  check(insights.size() == 2 && due_reflections(fresh, start).size() == 3, "Fresh demo shows both patterns and overdue reviews");
+  check(seed_forest_demo(db, start) == 0 && db.read() == fresh, "Same-clock reseed is byte-equivalent state");
+  check(seed_forest_demo(db, start + 1000) == 0 && db.read() == fresh, "Nearby clock does not drift timestamps");
+  check(spending_insights(fresh, later).empty(), "Fixture demonstrates stale examples after eight days");
+  check(seed_forest_demo(db, later) == 0, "Refreshing adds no rows");
+  const auto refreshed = db.read();
+  check(refreshed["finance"]["transactions"].size() == 7 && refreshed["finance"]["transactions"][0] == initial["finance"]["transactions"][0],
+        "Refresh preserves manual transaction and row count");
+  check(spending_insights(refreshed, later) == insights, "Refresh restores identical insight IDs and evidence");
+  check(seed_forest_demo(db, later) == 0 && db.read() == refreshed, "Refreshed seed is idempotent");
+  check(refreshed["account"] == fresh["account"] && refreshed["reactionSeq"] == fresh["reactionSeq"],
+        "Refresh preserves progress and reactions");
+  bool replay_applied = false;
+  db.mutate(id(301), "/api/transactions", manual, [&](Json&) { replay_applied = true; });
+  check(!replay_applied, "Refresh retains successful manual request IDs");
+  check(seed_forest_demo(db, start) == 0 && spending_insights(db.read(), start) == insights,
+        "Moving the controlled demo clock back re-anchors future examples without duplicates");
+  check(seed_forest_demo(db, later) == 0 && db.read() == refreshed, "Returning to later clock is reproducible");
+  // Preserve the user's saved review and its purchase time even across clock refresh.
+  const auto due = due_reflections(refreshed, later);
+  const auto demo_due = std::find_if(due.begin(), due.end(), [](const Json& t) { return t.at("source") == "demo"; });
+  check(demo_due != due.end(), "Refreshed demo has an overdue synthetic purchase");
+  const Json review = {{"requestId", id(302)}, {"transactionId", demo_due->at("id")}, {"verdict", "unsure"}};
+  db.mutate(id(302), "/api/reflections", review, [&](Json& state) { apply_reflection(state, review, later); });
+  const auto reviewed = db.read()["finance"]["transactions"][1];
+  seed_forest_demo(db, later + 8LL * 86400000);
+  check(db.read()["finance"]["transactions"][1] == reviewed, "Saved judgement and purchase time are not rewritten");
+
+  Database collision(":memory:"); run(collision, Action::onboard, onboarding);
+  auto conflicting = initial["finance"]["transactions"][0];
+  conflicting["id"] = "txn-demo-forest-cluster-3";
+  collision.mutate("", "/test", Json::object(), [&](Json& state) { state["finance"]["transactions"].push_back(conflicting); });
+  const auto before = collision.read();
+  error([&] { seed_forest_demo(collision, start); }, "REQUEST_ID_CONFLICT");
+  check(collision.read() == before, "Late demo-ID collision rolls back all earlier inserts");
+}
+
 }
 int main() {
   try {
     configure_timezone("America/Toronto");
-    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows();
+    economy(); validation(); atomicity(); concurrency(); feeding_and_quests(); reflection_boundary(); insight_windows(); insight_acceptance(); daily_report_calendar(); demo_clock_reproducibility();
     std::cout << "Economy, validation, transactions, concurrency, feeding, quests, timezone passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

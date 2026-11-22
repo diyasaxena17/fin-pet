@@ -2,12 +2,25 @@
 
 Mobile-first React application for mindful spending and confirmed savings. All network operations are routed through `src/lib/api.ts`; `VITE_USE_MOCK=true` selects `src/lib/mockApi.ts`, which applies the same frozen contract validation and domain rules as the service.
 
+## Integrated experiences
+
+The app root opens the forest companion preview from `forest-fe`. Its balances,
+lessons and animated hardware are local demonstration state, not live API data or
+physical device control. Use **Account dashboard** (`/?legacy=1`) for the API-backed
+forest journey below. Legacy navigation retains that account experience.
+
+**Behavioural tools** (`/signals`) preserves the target branch's Winter Oak signals
+experience; `/intent`, `/check-ins` and `/lab` remain directly reachable. Its
+persona-ledger and browser-storage behaviour remain separate from API account
+state. Both experiences remain reachable from the forest home. The behavioural
+shell includes a Forest home link back to the preview.
+
 ## Screens and routes
 
 | Route | Screen and purpose |
 | --- | --- |
 | `/onboarding` | Companion name and voice, a savings goal and date, three Future Me prompts, and optional monthly/daily budget setup. |
-| `/` | Forest dashboard: session welcome check-in for a daily budget, current savings goal, and investing learning focus; API pet state, acorns, XP/level, confirmed and potential savings, tree, budget/insight previews, purchase decision, level map, and DEMO progression controls. |
+| `/?legacy=1` | API-backed forest dashboard: session welcome check-in for a daily budget, current savings goal, and investing learning focus; API pet state, acorns, XP/level, confirmed and potential savings, tree, budget/insight previews, purchase decision, level map, and DEMO progression controls. |
 | `/budget` | Monthly/daily plan, category summary, transaction list and manual transaction entry. Every row shows its source. Transactions do not count as savings. |
 | `/insights` | Evidence-backed pattern cards and optional due reflections. Reflection verdicts do not earn rewards. |
 | `/learn` | Contract lesson cards with one answer each, feedback/reward, and the Level 2 daily quest. Lessons remain available at every level. |

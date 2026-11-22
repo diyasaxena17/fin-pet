@@ -24,6 +24,19 @@ class Statement {
     if (sqlite3_step(stmt) != SQLITE_DONE) throw std::runtime_error("SQLite write failed");
   }
 };
+void require_primary_key(sqlite3* db, const char* pragma, const std::string& key) {
+  Statement columns(db, pragma);
+  int key_columns = 0;
+  bool found = false;
+  int result;
+  while ((result = sqlite3_step(columns.stmt)) == SQLITE_ROW) {
+    if (sqlite3_column_int(columns.stmt, 5) == 0) continue;
+    ++key_columns;
+    found = key == reinterpret_cast<const char*>(sqlite3_column_text(columns.stmt, 1));
+  }
+  if (result != SQLITE_DONE || key_columns != 1 || !found)
+    throw std::runtime_error("Incompatible Mochi database primary key");
+}
 void validate_current_state(const Json& state) {
   validate_stored_state(state);
   if (!state.contains("finance")) throw std::runtime_error("Missing finance state");
@@ -45,7 +58,7 @@ void Database::exec(const char* sql) {
   if (sqlite3_exec(db_, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
     throw std::runtime_error(sqlite3_errmsg(db_));
 }
-Database::Database(const std::string& path) {
+Database::Database(const std::string& path, bool sandbox_only) {
   if (path != ":memory:") {
     const auto parent = std::filesystem::path(path).parent_path();
     if (!parent.empty()) std::filesystem::create_directories(parent);
@@ -58,6 +71,7 @@ Database::Database(const std::string& path) {
   }
   try {
     sqlite3_busy_timeout(db_, 5000);
+    if (sandbox_only) require_sandbox_owner(); // Before journal changes or v1 migration.
     exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     exec("BEGIN IMMEDIATE");
     {
@@ -71,27 +85,37 @@ Database::Database(const std::string& path) {
         exec("CREATE TABLE app_state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);"
              "CREATE TABLE processed_requests (request_id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, payload TEXT NOT NULL);"
              "CREATE TABLE decisions (request_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
-             "PRAGMA user_version=2;");
+             "PRAGMA user_version=1;");
         Statement insert(db_, "INSERT INTO app_state(id,payload) VALUES(1,?)");
         insert.text(1, empty_state().dump()); insert.done();
-      } else if (schema_version == 1) {
-        // Preserve the complete original payload, history and UUID tables in-place.
-        auto state = load(true);
-        if (!state.contains("finance")) state["finance"] = empty_finance();
-        validate_stored_state(state);
-        Statement upgrade(db_, "UPDATE app_state SET payload=? WHERE id=1");
-        upgrade.text(1, state.dump()); upgrade.done();
-        exec("PRAGMA user_version=2");
-      } else if (schema_version != 2) throw std::runtime_error("Incompatible Mochi database schema");
+      }
+      migrate(fresh ? 1 : schema_version);
     }
     (void)load();
     // Prepare all tables now, so an incompatible schema fails before listening.
     Statement ids(db_, "SELECT request_id,endpoint,payload FROM processed_requests LIMIT 0");
     Statement decisions(db_, "SELECT request_id,payload FROM decisions LIMIT 0");
+    require_primary_key(db_, "PRAGMA table_info(app_state)", "id");
+    require_primary_key(db_, "PRAGMA table_info(processed_requests)", "request_id");
+    require_primary_key(db_, "PRAGMA table_info(decisions)", "request_id");
     exec("COMMIT");
   } catch (...) {
     sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
     sqlite3_close(db_); db_ = nullptr; throw;
+  }
+}
+// Called only inside startup's transaction: schema, payload, version and final
+// compatibility checks must all succeed before any upgrade becomes durable.
+void Database::migrate(int version) {
+  if (version < 1 || version > 2)
+    throw std::runtime_error("Incompatible Mochi database schema");
+  if (version == 1) {
+    auto state = load(true);
+    if (!state.contains("finance")) state["finance"] = empty_finance();
+    validate_current_state(state);
+    Statement upgrade(db_, "UPDATE app_state SET payload=? WHERE id=1");
+    upgrade.text(1, state.dump()); upgrade.done();
+    exec("PRAGMA user_version=2");
   }
 }
 Database::~Database() { sqlite3_close(db_); }
@@ -106,6 +130,56 @@ Json Database::load(bool allow_v1) {
 Json Database::read() {
   std::lock_guard lock(mutex_);
   return load();
+}
+void Database::require_sandbox_owner() {
+  Statement marker(db_, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_replay'");
+  if (sqlite3_step(marker.stmt) == SQLITE_ROW) {
+    Statement owner(db_, "SELECT payload FROM sandbox_replay WHERE id=1");
+    if (sqlite3_step(owner.stmt) != SQLITE_ROW ||
+        Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(owner.stmt, 0))).value("dataset", "") != "mochi-sandbox-14-v1")
+      throw std::runtime_error("Invalid sandbox ownership marker");
+    return;
+  }
+  Statement tables(db_, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+  if (sqlite3_step(tables.stmt) == SQLITE_ROW && sqlite3_column_int(tables.stmt, 0) == 0) return;
+  Statement history(db_, "SELECT (SELECT count(*) FROM processed_requests)+(SELECT count(*) FROM decisions)");
+  if (load() != empty_state() || sqlite3_step(history.stmt) != SQLITE_ROW || sqlite3_column_int64(history.stmt, 0) != 0)
+    throw std::runtime_error("Refusing to replace an unowned database with sandbox activity");
+}
+Json Database::sandbox_metadata() {
+  std::lock_guard lock(mutex_);
+  Statement exists(db_, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sandbox_replay'");
+  if (sqlite3_step(exists.stmt) != SQLITE_ROW) return nullptr;
+  Statement query(db_, "SELECT payload FROM sandbox_replay WHERE id=1");
+  if (sqlite3_step(query.stmt) != SQLITE_ROW) throw std::runtime_error("Missing sandbox ownership metadata");
+  return Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(query.stmt, 0)));
+}
+void Database::save_sandbox(const Json& snapshot) {
+  std::lock_guard lock(mutex_);
+  validate_current_state(snapshot.at("state"));
+  exec("BEGIN IMMEDIATE");
+  try {
+    require_sandbox_owner();
+    exec("CREATE TABLE IF NOT EXISTS sandbox_replay (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)");
+    Statement state(db_, "UPDATE app_state SET payload=? WHERE id=1");
+    state.text(1, snapshot.at("state").dump()); state.done();
+    exec("DELETE FROM processed_requests; DELETE FROM decisions");
+    for (const auto& request : snapshot.at("requests")) {
+      Statement insert(db_, "INSERT INTO processed_requests(request_id,endpoint,payload) VALUES(?,?,?)");
+      insert.text(1, request.at("input").at("requestId")); insert.text(2, request.at("endpoint"));
+      insert.text(3, request.at("input").dump()); insert.done();
+      if (request.at("endpoint") == "/api/decisions") {
+        auto decision = request.at("input");
+        decision["amountCents"] = money_cents(decision.at("amount")); decision.erase("amount");
+        decision["createdAtEpoch"] = request.at("at").get<std::int64_t>() / 1000;
+        Statement history(db_, "INSERT INTO decisions(request_id,payload) VALUES(?,?)");
+        history.text(1, decision.at("requestId")); history.text(2, decision.dump()); history.done();
+      }
+    }
+    Statement meta(db_, "INSERT OR REPLACE INTO sandbox_replay(id,payload) VALUES(1,?)");
+    meta.text(1, snapshot.at("metadata").dump()); meta.done();
+    exec("COMMIT");
+  } catch (...) { sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr); throw; }
 }
 Json Database::mutate(const std::string& id, const std::string& endpoint,
                       const Json& input, const std::function<void(Json&)>& apply, bool reset) {
@@ -141,7 +215,7 @@ Json Database::mutate(const std::string& id, const std::string& endpoint,
         auto stored_decision = input;
         stored_decision["amountCents"] = money_cents(input.at("amount"));
         stored_decision.erase("amount");
-        stored_decision["createdAtEpoch"] = std::time(nullptr);
+        stored_decision["createdAtEpoch"] = game_now();
         decision.text(1, id); decision.text(2, stored_decision.dump()); decision.done();
       }
     }
