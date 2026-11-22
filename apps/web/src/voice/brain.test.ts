@@ -55,7 +55,7 @@ describe('Mochi talking brain', () => {
     const { brain, said, sent, events } = setup();
     await brain.tap();
     await brain.hear('good night Tiger');
-    expect(said.at(-1)).toMatch(/Bye bye!/);
+    expect(said.at(-1)).toBe('Okay, good night!');
     expect(sent.at(-1)).toBe('sleep');
     expect(brain.awake).toBe(false);
     expect(events).toContainEqual({ type: 'awake', awake: false });

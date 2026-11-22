@@ -93,7 +93,7 @@ export class MochiBrain {
 
   async sleep(withGoodbye = true): Promise<void> {
     if (!this.awake) return;
-    if (withGoodbye) await this.say(`Bye bye! Keep those savings growing. ${this.deps.petName()} is going to nap now.`, false);
+    if (withGoodbye) await this.say('Okay, good night!', false);   // short and sweet
     this.awake = false; this.pending = null;
     this.listener.stop(); stopSpeaking();
     if (this.idleTimer) clearTimeout(this.idleTimer);
