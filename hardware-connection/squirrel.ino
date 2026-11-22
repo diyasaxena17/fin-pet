@@ -164,7 +164,7 @@ void worriedTick() {
   if (millis() < nextTick) return;
   shake = !shake;
   drawEyesAt(shake ? 1 : -1);           // eyes tremble left/right
-  tail.write(shake ? 82 : 98);          // tail shivers
+  // tail stays still: it only wags for the wake-up, goodbye and good news (saves power)
   nextTick = millis() + 140;
 }
 
@@ -184,8 +184,7 @@ void sadTick() {
 // NEW: gentle tail sway while the pet is talking
 void talkTick() {
   if (millis() < nextSway) return;
-  swayRight = !swayRight;
-  tail.write(swayRight ? 102 : 78);
+  // tail stays still while talking (it only wags for the wake-up, goodbye and good news)
   nextSway = millis() + 320;
 }
 
@@ -194,6 +193,7 @@ void setMood(Mood m) {
   mood = m;
   if (m == SLEEPING) { hardwareOff(); return; }   // NEW: sleep = fully off
   hardwareOn();
+  lcd.begin(16, 2);                     // restart the screen on every mood: fixes a half-drawn screen after a power dip
   lcd.clear();
   switch (m) {
     case IDLE:
@@ -220,7 +220,7 @@ void setMood(Mood m) {
       moodEnd = millis() + MOOD_MS;
       for (int t = 0; t < 6; t++) lcd.createChar(t, SAD_T[t]);
       lcd.createChar(6, BLANK);
-      tail.write(35);                   // tail droops
+      tail.write(90);                   // tail stays still (it only wags for good news)
       tearFrame = -1;
       drawSad();
       nextTick = millis() + 400;

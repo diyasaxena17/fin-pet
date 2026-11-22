@@ -22,13 +22,55 @@ hardware owner. Nothing here changes the app, API, contracts or lockfile.
 | --- | --- |
 | `i` | Idle: pink, blinking |
 | `p` | Happy dance: ^ ^ eyes, tail wag (about 2.5 s), then idle |
-| `w` | Worried: orange, shaking eyes (5 s) |
-| `d` | Sad: blue, droopy eyes, tears (5 s) |
-| `t` | Talking: idle eyes with a gentle tail sway |
+| `w` | Worried: orange, shaking eyes (5 s), tail still |
+| `d` | Sad: blue, droopy eyes, tears (5 s), tail still |
+| `t` | Talking: idle eyes (tail still) |
 | `z` | Sleep: screen and backlight off, servo released |
 
 The sketch replies `READY` at start and `OK <letter>` per command. It starts
 asleep and goes back to sleep when the USB connection closes.
+
+## Run it with the app (recommended)
+
+The squirrel is run by a small background program on the laptop it's plugged into,
+`windows-bridge.ps1` (Windows, nothing to install). The app has no hardware screen.
+
+1. Plug the squirrel in by USB and close the Arduino IDE Serial Monitor (only one
+   program can use the port).
+2. Double-click **`start-squirrel-bridge.bat`**. It finds the Arduino by itself and
+   prints what it does. Leave the window open; closing it puts the squirrel to sleep.
+3. The phone's NFC automation (iPhone Shortcuts → Automation → NFC → "Get Contents of
+   URL") opens the fixed tap link
+   `https://ntfy.sh/mochi-tii645ranyxe/publish?message=wake`. The app and bridge use
+   the same code (`VITE_MOCHI_TAP_CODE` / `MOCHI_TAP_CODE` change it), so the chip never
+   needs reprogramming. The NFC chip is only for waking the squirrel.
+
+| When | Squirrel |
+| --- | --- |
+| Bridge started | Asleep (`z`) |
+| NFC tap | Happy dance (`p`), then today's budget from the app: worried (`w`) if up to 25% over, sad (`d`) if more |
+| Daily check-in completed (while awake) | Budget mood |
+| Level up, savings added, goal reached (while awake) | Happy dance |
+| Spending synced from the bank goes over budget (while awake) | Worried or sad |
+| Pet tab test buttons | Wake and play that mood |
+| The app talks (greeting, reports, answers) | Tail sway (`t`) |
+| You say "goodbye", "good night", "bye bye"… | Asleep |
+| 10 quiet minutes, or closing the bridge | Asleep, screen off, servo released |
+
+Messages travel over the same private ntfy.sh topic: the phone sends `wake`, the app
+sends `mood:<letter>` (only acts while awake), `mood!:<letter>` (wakes first), `sleep`,
+and `app:here` (the app is open and gives the spoken reports itself).
+
+## Talking (apps/web/src/voice)
+
+When the app is open in Chrome, an NFC tap also starts Mochi's voice, the same brain as
+the original Mochi app: it greets you, says the daily budget report and the two-week
+savings/investing check (with the matching dance or worried face), asks once a day if
+you want the money news brief, then chats until you say goodbye. Six voices (Cutie,
+Sparkle, Sage, Buddy, Coach Max, Zay) are on the Pet tab. Voices, chat and news go
+through the dev server's `/mochi-voice` proxy to Mochi's existing Vercel server; put
+`MOCHI_PASS=<passcode>` in the repo-root `.env` (never committed). Click the page once
+after opening it so the browser allows sound, and allow the microphone.
 
 ## Use with the existing device poller
 
