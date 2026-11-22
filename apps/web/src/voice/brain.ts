@@ -56,39 +56,22 @@ export class MochiBrain {
     this.speakFn = deps.speak ?? speak;
   }
 
-  /** An NFC tap: wake up, or give the report again if already awake. */
+  /** An NFC tap: wake up with a short hello. Already awake: nothing extra. */
   async tap(): Promise<void> {
-    this.deps.send('app:here');          // the app is open: it does the reports, not the bridge
-    if (this.awake) { await this.dailyCheck(); return; }
-    await this.wake();
+    this.deps.send('app:here');
+    if (!this.awake) await this.wake();
   }
 
+  /** Just a hello. Reports and news only when you ask for them. */
   async wake(): Promise<void> {
     if (this.awake) return;
     this.awake = true; this.history = []; this.pending = null;
     this.deps.show({ type: 'awake', awake: true });
-    this.moodUntil = Date.now() + MOOD_MS.happy;     // the bridge is doing its wake-up happy dance
+    this.moodUntil = Date.now() + MOOD_MS.happy;     // the bridge does the wake-up tail wag
     wakeChirp();
     this.deps.show({ type: 'mood', mood: 'happy' });
     this.touch();
-    const name = this.deps.petName(), money = this.deps.money();
-    const firstToday = store.get('lastWake') !== today();
-    store.set('lastWake', today());
-    const hour = new Date().getHours();
-    const hi = hour < 12 ? 'Good morning' : hour < 17 ? 'Hey' : 'Good evening';
-    if (!money || money.budget === null) {
-      await this.say(`${hi}! ${name} is awake! Set your daily budget in the app, then tap me again and I'll tell you how you did.`);
-    } else {
-      await this.say(firstToday ? `${hi}! ${name} is awake! Let's see how today went.` : `${hi}! Report time!`);
-      await this.dailyCheck();
-      await this.goalCheck(true);
-    }
-    if (firstToday && !store.get('newsAsked.' + today())) {
-      store.set('newsAsked.' + today(), '1');
-      this.pending = 'news';
-      await this.say("Do you want to hear today's money news summary?");
-    }
-    this.listen();
+    await this.say('Hey, how are you?');
   }
 
   async sleep(withGoodbye = true): Promise<void> {

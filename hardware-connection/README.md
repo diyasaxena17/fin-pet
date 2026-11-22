@@ -48,7 +48,7 @@ The squirrel is run by a small background program on the laptop it's plugged int
 | When | Squirrel |
 | --- | --- |
 | Bridge started | Asleep (`z`) |
-| NFC tap | Happy dance (`p`), then today's budget from the app: worried (`w`) if up to 25% over, sad (`d`) if more |
+| NFC tap | Tail-wag dance (`p`); the app just says "Hey, how are you?" |
 | Daily check-in completed (while awake) | Budget mood |
 | Level up, savings added, goal reached (while awake) | Happy dance |
 | Spending synced from the bank goes over budget (while awake) | Worried or sad |
@@ -64,9 +64,10 @@ and `app:here` (the app is open and gives the spoken reports itself).
 ## Talking (apps/web/src/voice)
 
 When the app is open in Chrome, an NFC tap also starts Mochi's voice, the same brain as
-the original Mochi app: it greets you, says the daily budget report and the two-week
-savings/investing check (with the matching dance or worried face), asks once a day if
-you want the money news brief, then chats until you say goodbye. Six voices (Cutie,
+the original Mochi app: it just says "Hey, how are you?" and listens. Ask for the daily budget report,
+the two-week savings/investing summary or the money news brief and it answers (with
+a tail-wag dance for good news, worried or sad eyes otherwise), then chats until you
+say goodbye. Six voices (Cutie,
 Sparkle, Sage, Buddy, Coach Max, Zay) are on the Pet tab. Voices, chat and news go
 through the dev server's `/mochi-voice` proxy to Mochi's existing Vercel server; put
 `MOCHI_PASS=<passcode>` in the repo-root `.env` (never committed). Click the page once

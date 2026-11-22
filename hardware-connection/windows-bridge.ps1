@@ -1,6 +1,6 @@
 # Mochi squirrel bridge: the "backend" that runs the physical squirrel. Windows, no installs, no admin.
 # It owns the Arduino's USB port and listens on the app's private ntfy.sh topic:
-#   "wake" / "tap"   (phone NFC tap)  -> wake up: happy dance, then today's budget mood from the app's API
+#   "wake" / "tap"   (phone NFC tap)  -> wake up with a tail-wag dance
 #   "mood:<letter>"  (app events)     -> play that mood if awake
 #   "mood!:<letter>" (app test button)-> wake and play that mood
 #   "sleep"                           -> sleep now (the app says goodbye)
@@ -51,7 +51,12 @@ $awake = $false
 $lastActivity = Get-Date
 $reportAt = $null
 $lastMood = ""; $lastMoodAt = Get-Date "2000-01-01"
-function Say([string]$text, [string]$color = "Gray") { Write-Host "$(Get-Date -Format T)  $text" -ForegroundColor $color }
+$logFile = Join-Path $PSScriptRoot "bridge.log"
+function Say([string]$text, [string]$color = "Gray") {
+  $line = "$(Get-Date -Format T)  $text"
+  Write-Host $line -ForegroundColor $color
+  try { Add-Content -Path $logFile -Value $line } catch {}
+}
 
 function Budget-Letter {
   try { $r = Invoke-RestMethod -Uri "$api/api/reports/today" -TimeoutSec 3 -UseBasicParsing } catch { return @("", "couldn't read today's budget from the app") }
@@ -66,7 +71,7 @@ function Budget-Letter {
 function Wake([string]$why) {
   $script:awake = $true; $script:lastActivity = Get-Date
   Send-Squirrel "p"
-  $script:reportAt = (Get-Date).AddSeconds(3)   # after the happy dance, show today's budget
+  $script:reportAt = $null      # no report on wake: the app gives reports only when asked
   Say "$why -> awake, happy dance!" Green
 }
 function Go-Sleep([string]$why) {
